@@ -13,7 +13,7 @@ import (
 	"github.com/ORBAT/bort/pkg/vm"
 )
 
-const MaxError = 1
+const MaxError = 1.0
 
 type Genome []vm.Op
 
@@ -197,7 +197,7 @@ func (p Population) Swap(i, j int) {
 	p[i], p[j] = p[j], p[i]
 }
 
-type ErrorFunction func(Critter) float64
+type ErrorFunction func(c Critter, input ...int) float64
 
 func (p Population) CalcErrors(errorFn ErrorFunction) Population {
 	for i, critter := range p {
@@ -287,7 +287,7 @@ func isIn(ints []int, i int) bool {
 // Mutate a part of the population, and return a new population with only mutated critters + the best of p
 func (p Population) Mutate(rng *rand.Rand, ps Probabilities) Population {
 	nToMutate := ps.NToMutate(p)
-	newP := make(Population, /*nToMutate-1,*/ nToMutate)
+	newP := make(Population, nToMutate-1, nToMutate)
 	picked := make([]int, 0, nToMutate)
 	for i := range newP {
 		critter, idx := p.SelectRandom(rng)
@@ -298,7 +298,7 @@ func (p Population) Mutate(rng *rand.Rand, ps Probabilities) Population {
 		newP[i] = critter.Mutate(rng, ps.CrossoverMutP, ps.PointMutP, ps.TransposeMutP)
 	}
 	// elite selection
-	// newP = append(newP, p.Best())
+	newP = append(newP, p.Best())
 	return newP
 }
 
@@ -354,31 +354,32 @@ func (ps Probabilities) NToCrossover(p Population) int {
 }
 
 type Stats struct {
-	AvgErr  float64
-	ZeroErr Population
+	AvgErr, AvgNSteps float64
+	ZeroErr           Population
 }
 
 func (p *Population) Stats() Stats {
 	popSize := float64(len(*p))
-	sum := 0.0
+	errSum := 0.0
+	nStepSum := 0.0
 	zeroErr := Population{}
 	for _, cr := range *p {
-		sum += cr.Error
+		errSum += cr.Error
+		nStepSum += float64(cr.NSteps)
 		if cr.Error == 0 {
 			zeroErr = append(zeroErr, cr)
 		}
 	}
-	return Stats{sum / popSize, zeroErr}
+	return Stats{errSum / popSize, nStepSum / popSize, zeroErr}
 }
 
 func (p *Population) DoYourThing(ps Probabilities, errorFn ErrorFunction, rng *rand.Rand, maxGen int, toSort []int, ignoreErrs bool) (pop Population, best Critter) {
 	generation := 0
-	wantToSort := make([]int, len(toSort))
-	copy(wantToSort, toSort)
-	sort.Ints(wantToSort)
 	for ; generation < maxGen; generation++ {
 		p.CalcErrors(errorFn)
 		st := p.Stats()
+
+		bestToSortErr := MaxError
 
 		if generation%1000 == 0 {
 			genBest := p.Best()
@@ -386,16 +387,18 @@ func (p *Population) DoYourThing(ps Probabilities, errorFn ErrorFunction, rng *r
 			want := make([]int, len(origInp))
 			copy(want, origInp)
 			sort.Ints(want)
-			log.Printf("gen %5d - avg %.3f - no err %2d - genBest %s err %.3f.\norig: %v\ngot:  %v\nwant: %v\n", generation, st.AvgErr, len(st.ZeroErr), genBest.ID, genBest.Error,
+			log.Printf("gen %5d - avgErr %1.3f - no err %2d - avgNSteps/inp %2.1f - genBest %s err %.3f.\norig: %v\ngot:  %v\nwant: %v\n",
+				generation, st.AvgErr, len(st.ZeroErr), st.AvgNSteps/float64(len(origInp)), genBest.ID, genBest.Error,
 				origInp, genBest.Int, want)
 		}
 
 		if zeros := st.ZeroErr; len(zeros) != 0 {
 			for _, critter := range zeros {
-				critter.Input(toSort).Run(ignoreErrs)
-				if isSame(wantToSort, fucking.IntSlice(critter.Int)) {
-					log.Printf("gen %4d - critter %s sorted %v -> %v\nsource:\n%s", generation, critter.ID, toSort, wantToSort, critter.String())
-					return *p, critter
+				toSortErr := errorFn(critter, toSort...)
+				if toSortErr < bestToSortErr {
+					log.Printf("gen %5d - best sort of your array so far (error %1.3f) :\norig: %v\nnow:  %v", generation, critter.Error, toSort, critter.Int)
+					bestToSortErr = toSortErr
+					best = critter
 				}
 			}
 		}
@@ -454,10 +457,19 @@ func isSame(a, b []int) bool {
 }
 
 func SortErrorGen(minSize, maxSize int, ignoreStepErrs bool, rng *rand.Rand) ErrorFunction {
-	return func(c Critter) float64 {
+	return func(c Critter, input ...int) float64 {
 		inpLen := rng.Intn(1+(maxSize-minSize)) + minSize
+		var inp, want []int
+		if len(input) == 0 {
+			inp, want = genTestSlice(inpLen, rng)
+		} else {
+			inp = input
+			want = make([]int, len(input))
+			copy(want, input)
+			sort.Ints(want)
+		}
 
-		inp, want := genTestSlice(inpLen, rng)
+
 		_, err := c.Input(inp).Run(ignoreStepErrs)
 		if err != nil {
 			return MaxError
@@ -466,9 +478,9 @@ func SortErrorGen(minSize, maxSize int, ignoreStepErrs bool, rng *rand.Rand) Err
 
 		outLen := len(outp)
 
-		if inpLen != outLen {
-			return MaxError
-		}
+		// if inpLen != outLen {
+		// 	return MaxError
+		// }
 
 		if isSame(outp, inp) {
 			return MaxError
