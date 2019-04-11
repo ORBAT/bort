@@ -27,14 +27,14 @@ func main() {
 	}
 
 	probs := life.Probabilities{
-		CrossoverRatio: 0.8,
-		CrossoverMutP: 0.01,
-		PointMutP: 0.02,
-		TransposeMutP: 0.02,
-		TournamentP: 0.60,
+		CrossoverRatio: 0.95,
+		CrossoverMutP: 0.005,
+		PointMutP: 0.01,
+		TransposeMutP: 0.01,
+		TournamentP: 0.75,
 		TournamentRatio: 0.33,
 	}
 
 	p := life.NewPopulation(30, vm.MaxExecStackSize, life.NewRNG(0))
-	p.DoYourThing(probs, life.SortErrorGen(10, 15, false, life.NewRNG(0)), life.NewRNG(0), 500000, nums, false)
+	p.DoYourThing(probs, life.SortErrorGen(3, 8, true, life.NewRNG(0)), life.NewRNG(0), 500000, nums, true)
 }
