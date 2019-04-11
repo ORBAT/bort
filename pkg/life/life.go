@@ -19,16 +19,19 @@ type Genome []vm.Op
 
 type Vector []float64
 
+// EuclidDist returns the "normalized" Euclidean distance between v and other. As both vectors
+// should have values between [0,1], the maximum Euclidean distance between them is sqrt(longLen)
+// (i.e. square of the dimension), dividing the distance by the sqrt normalizes
 func (v Vector) EuclidDist(other Vector) float64 {
 	lenV := len(v)
 	lenOther := len(other)
 	var (
 		longer, shorter   = other, v
-		shortLen = lenV
+		longLen, shortLen = lenOther, lenV
 	)
 	if lenV > lenOther {
 		longer, shorter = v, other
-		shortLen = lenOther
+		longLen, shortLen = lenV, lenOther
 	}
 	sumSqDiffs := 0.0
 	for longerIdx, longerVal := range longer {
@@ -39,7 +42,7 @@ func (v Vector) EuclidDist(other Vector) float64 {
 		diff := longerVal - shortVal
 		sumSqDiffs += diff * diff
 	}
-	return math.Sqrt(sumSqDiffs)
+	return math.Sqrt(sumSqDiffs) / math.Sqrt(float64(longLen))
 }
 
 func (g Genome) ToVector() Vector {
@@ -63,7 +66,7 @@ func (g Genome) String() string {
 }
 
 type Critter struct {
-	Genome Genome
+	Genome
 	*vm.CPU
 	Error float64 // error for this Critter. Lower is better
 	ID    string
@@ -78,7 +81,7 @@ func (c Critter) String() string {
 func (c Critter) Mutate(rng *rand.Rand, cfg *Conf) Critter {
 	if rng.Float64() < cfg.CrossoverMutP {
 		cg := CritterGenerator(vm.MaxExecStackSize, rng)
-		return c.Cross(cg(), rng)
+		return c.Cross(cg(), rng, cfg)
 	}
 	opGen := OpGenerator(rng)
 	genomeLen := len(c.Genome)
@@ -172,7 +175,7 @@ func (c Critter) cross(other Critter, randGen *rand.Rand, tries int, cfg *Conf) 
 	offspringGenome = append(offspringGenome, a.Genome[aMaxPt:]...)
 
 	if offl := len(offspringGenome); offl < 2 || offl > vm.MaxExecStackSize {
-		return c.cross(other, randGen, tries+1, nil)
+		return c.cross(other, randGen, tries+1, cfg)
 	}
 	return NewCritter(offspringGenome).Mutate(randGen, cfg)
 }
@@ -187,8 +190,8 @@ func (c Critter) cross(other Critter, randGen *rand.Rand, tries int, cfg *Conf) 
 //               ^         ^
 //     Offspring
 //     0 1 f g h i j 6 7 8 9
-func (c Critter) Cross(other Critter, rng *rand.Rand) (offspring Critter) {
-	offspring = c.crossSimple(other, rng, 0)
+func (c Critter) Cross(other Critter, rng *rand.Rand, cfg *Conf) (offspring Critter) {
+	offspring = c.cross(other, rng, 0, cfg)
 	if len(offspring.Genome) > vm.MaxExecStackSize {
 		offspring.Genome = offspring.Genome[:vm.MaxExecStackSize]
 	}
@@ -259,6 +262,25 @@ func (p *Population) Delete(idx int) {
 	*p = (pp)[:last]
 }
 
+func (p Population) SelectFar(rng *rand.Rand, cfg *Conf, orig Critter) (other Critter, indexInP int) {
+	origv := orig.ToVector()
+	maxDist := 0.0
+	var furthest Critter
+	for tries := 0; tries <= 20; tries++ {
+		other, indexInP = p.Select(rng, cfg)
+		dist := other.ToVector().EuclidDist(origv)
+		if dist < cfg.MinEuclDist {
+			furthest = other
+			break
+		}
+		if dist > maxDist {
+			furthest = other
+			maxDist = dist
+		}
+	}
+	return furthest, indexInP
+}
+
 //
 // Select an individual from the population using tournament selection.
 //
@@ -271,16 +293,15 @@ func (p *Population) Delete(idx int) {
 // tournamentP = 1 always returns the best individual of the tournament, and a really small
 // tournamentRatio (so only eg. 1 individual ends up in the tournament) will make selection
 // effectively random
-func (p Population) Select(rng *rand.Rand, tournamentRatio, tournamentP float64) (cr Critter, indexInP int) {
+func (p Population) Select(rng *rand.Rand, cfg *Conf) (cr Critter, indexInP int) {
 	popSize := len(p)
 
-	tournSize := int(float64(popSize) * tournamentRatio)
+	tournSize := int(float64(popSize) * cfg.TournamentRatio)
 
 	tournament := make(Population, tournSize)
 
 	// idx is effectively a slice of randomized indices into p, where each index is in idxs once
 	idxs := rng.Perm(popSize)
-
 	// pick tournSize individuals into the tournament using random indices
 	for i := range tournament {
 		tournament[i] = p[idxs[i]]
@@ -289,10 +310,10 @@ func (p Population) Select(rng *rand.Rand, tournamentRatio, tournamentP float64)
 	sort.Sort(tournament)
 
 	winner := tournament[len(tournament)-1]
-	oneLessPp := 1 - tournamentP
+	oneLessPp := 1 - cfg.TournamentP
 	i := 0
 	for ; i < tournSize; i++ {
-		if rng.Float64() < (tournamentP * math.Pow(oneLessPp, float64(i))) {
+		if rng.Float64() < (cfg.TournamentP * math.Pow(oneLessPp, float64(i))) {
 			winner = tournament[i]
 			break
 		}
@@ -320,7 +341,7 @@ func isIn(ints []int, i int) bool {
 // Mutate a part of the population, and return a new population with only mutated critters + the best of p
 func (p Population) Mutate(rng *rand.Rand, cfg *Conf) Population {
 	nToMutate := cfg.NToMutate(p)
-	newP := make(Population, /*nToMutate-1, */ nToMutate)
+	newP := make(Population, nToMutate-1, nToMutate)
 	picked := make([]int, 0, nToMutate)
 	for i := range newP {
 		critter, idx := p.SelectRandom(rng)
@@ -330,7 +351,8 @@ func (p Population) Mutate(rng *rand.Rand, cfg *Conf) Population {
 		picked = append(picked, idx)
 		newP[i] = critter.Mutate(rng, cfg)
 	}
-	// // elite selection
+
+	// elite selection
 	newP = append(newP, p.Best())
 	return newP
 }
@@ -344,10 +366,10 @@ func (p Population) Cross(rng *rand.Rand, cfg *Conf) Population {
 			idx1, idx2         int
 		)
 		for idx1 == idx2 {
-			critter1, idx1 = p.Select(rng, cfg.TournamentRatio, cfg.TournamentP)
-			critter2, idx2 = p.Select(rng, cfg.TournamentRatio, cfg.TournamentP)
+			critter1, idx1 = p.Select(rng, cfg)
+			critter2, idx2 = p.SelectFar(rng, cfg, critter1)
 		}
-		newP[i] = critter1.Cross(critter2, rng)
+		newP[i] = critter1.Cross(critter2, rng, cfg)
 	}
 	return newP
 }
@@ -376,6 +398,8 @@ type Conf struct {
 	// MinEuclDist is the smallest Euclidean distance to a partner that Select will allow (if at all
 	// possible)
 	MinEuclDist float64
+
+	Verbose bool
 }
 
 // MutationRatio is a convenience method for 1 - ps.CrossoverRatio
@@ -413,7 +437,7 @@ func (p *Population) Stats(errThreshold float64) Stats {
 	return Stats{errSum / popSize, nStepSum / popSize, lowErr}
 }
 
-func (p *Population) DoYourThing(cfg *Conf, errorFn ErrorFunction, rng *rand.Rand, maxGen int, toSort []int, ignoreErrs bool) (pop Population, best Critter) {
+func (p *Population) DoYourThing(cfg *Conf, errorFn ErrorFunction, rng *rand.Rand, maxGen int, toSort []int) (pop Population, best Critter, bestSort []interface{}) {
 	generation := 0
 	bestToSortErr := MaxError
 	wantSorted := make([]int, len(toSort))
@@ -423,7 +447,7 @@ func (p *Population) DoYourThing(cfg *Conf, errorFn ErrorFunction, rng *rand.Ran
 		p.CalcErrors(errorFn)
 		st := p.Stats(cfg.ErrThreshold)
 
-		if generation%10 == 0 {
+		if generation%50 == 0 {
 			genBest := p.Best()
 			origInp := genBest.OrigInput()
 			want := make([]int, len(origInp))
@@ -431,16 +455,17 @@ func (p *Population) DoYourThing(cfg *Conf, errorFn ErrorFunction, rng *rand.Ran
 			sort.Ints(want)
 			log.Printf("gen %4d - avgErr %1.3f - err<%1.2f = %2d - avgNSteps/inp %2.1f - genBest %s err %.3f.\norig: %v\ngot:  %v\nwant: %v\n<%s>\n",
 				generation, st.AvgErr, cfg.ErrThreshold, len(st.LowErr), st.AvgNSteps/float64(len(origInp)), genBest.ID, genBest.Error,
-				origInp, genBest.Int, want, genBest.Genome.String())
+				origInp, genBest.Int, want, genBest.String())
 		}
 
 		if candidates := st.LowErr; len(candidates) != 0 {
 			for _, candidate := range candidates {
 				toSortErr := errorFn(candidate, toSort...)
 				if toSortErr < bestToSortErr {
-					log.Printf("gen %4d - best sort of your array so far (error %1.3f) :\norig: %v\nnow:  %v\nwant: %v", generation, toSortErr, toSort, candidate.Int, wantSorted)
+					log.Printf("gen %4d - best sort of your array so far (error %1.3f) :\norig: %v\nnow:  %v\nwant: %v\n%s", generation, toSortErr, toSort, candidate.Int, wantSorted,candidate.String())
 					bestToSortErr = toSortErr
 					best = candidate
+					bestSort = candidate.Int
 				}
 			}
 		}
@@ -450,7 +475,7 @@ func (p *Population) DoYourThing(cfg *Conf, errorFn ErrorFunction, rng *rand.Ran
 		*p = newPop
 	}
 
-	return *p, best
+	return *p, best, bestSort
 }
 
 func NewRNG(seed int64) *rand.Rand {
