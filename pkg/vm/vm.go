@@ -12,9 +12,9 @@ var (
 	// MaxStepsPerInput governs how many steps per each input item each individual can run. For
 	// example, for an input of length 5 and MaxStepsPerInput of 4, each individual would have a
 	// total of 20 steps to do its thing.
-	MaxStepsPerInput = 10.0
+	MaxStepsPerInput = 7.0
 
-	MaxExecStackSize = 15
+	MaxExecStackSize = 40
 )
 
 type StackType uint8
@@ -222,11 +222,11 @@ func (s *Stacks) Reset() {
 	s.Stack.Reset()
 }
 
-// PopStack pops from s.Stack, or returns StackInt if s.Stack is empty
+// PopStack pops from s.Stack, or returns StackBool if s.Stack is empty
 func (s *Stacks) PopStack() StackType {
 	top, err := s.Stack.Pop()
 	if err != nil {
-		top = StackInt
+		top = StackBool
 	}
 	return top.(StackType)
 }
@@ -483,12 +483,12 @@ var Ops = rawOpMap{
 	// 	return nil
 	// },
 	// "rot": StackFn((*Stack).Rot).ToOpFn(),
-	// "rot3":  StackFn((*Stack).Rot3).ToOpFn(),
-	// "dup":  StackFn((*Stack).Dup).ToOpFn(),
-	// "swap": StackFn((*Stack).Swap).ToOpFn(),
-	// "over": StackFn((*Stack).Over).ToOpFn(),
-	// "nip":  StackFn((*Stack).Over).ToOpFn(),
-	// "tuck": StackFn((*Stack).Over).ToOpFn(),
+	"rot3":  StackFn((*Stack).Rot3).ToOpFn(),
+	"dup":  StackFn((*Stack).Dup).ToOpFn(),
+	"swap": StackFn((*Stack).Swap).ToOpFn(),
+	"over": StackFn((*Stack).Over).ToOpFn(),
+	"nip":  StackFn((*Stack).Over).ToOpFn(),
+	"tuck": StackFn((*Stack).Over).ToOpFn(),
 	// "reset": StackFn((*Stack).Reset).ToOpFn(),
 	// "drop": StackFn((*Stack).Drop).ToOpFn(),
 	// "yank": func(cpu *CPU) error {
@@ -596,33 +596,33 @@ var Ops = rawOpMap{
 	// },
 
 	// bool: (a b -- a && b)
-	// "and": func(cpu *CPU) error {
-	// 	b, err := cpu.Bool.Pop()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	a, err := cpu.Bool.Pop()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	cpu.Bool.Push(a.(bool) && b.(bool))
-	// 	return nil
-	// },
-	//
-	// // bool: (a b -- a || b)
-	// "or": func(cpu *CPU) error {
-	// 	b, err := cpu.Bool.Pop()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	a, err := cpu.Bool.Pop()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	cpu.Bool.Push(a.(bool) || b.(bool))
-	// 	return nil
-	// },
-	//
+	"and": func(cpu *CPU) error {
+		b, err := cpu.Bool.Pop()
+		if err != nil {
+			return err
+		}
+		a, err := cpu.Bool.Pop()
+		if err != nil {
+			return err
+		}
+		cpu.Bool.Push(a.(bool) && b.(bool))
+		return nil
+	},
+
+	// bool: (a b -- a || b)
+	"or": func(cpu *CPU) error {
+		b, err := cpu.Bool.Pop()
+		if err != nil {
+			return err
+		}
+		a, err := cpu.Bool.Pop()
+		if err != nil {
+			return err
+		}
+		cpu.Bool.Push(a.(bool) || b.(bool))
+		return nil
+	},
+
 	"not": func(cpu *CPU) error {
 		b, err := cpu.Bool.Pop()
 		if err != nil {
@@ -660,7 +660,7 @@ var Ops = rawOpMap{
 		return nil
 	},
 
-	// "y": y,
+	"y": y,
 	//
 	// "repeat": func(cpu *CPU) error {
 	// 	if cpu.Exec.Len() < 2 {
@@ -681,8 +681,12 @@ var Ops = rawOpMap{
 	// 	return nil
 	// },
 
-	"halt": func(cpu *CPU) error {
-		cpu.halt = true
+	"halt_if_true": func(cpu *CPU) error {
+		ib, err := cpu.Bool.Pop()
+		if err != nil {
+			return nil
+		}
+		cpu.halt = ib.(bool)
 		return nil
 	},
 

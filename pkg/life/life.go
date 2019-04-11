@@ -379,6 +379,9 @@ func (p *Population) Stats(errThreshold float64) Stats {
 func (p *Population) DoYourThing(ps Conf, errorFn ErrorFunction, rng *rand.Rand, maxGen int, toSort []int, ignoreErrs bool) (pop Population, best Critter) {
 	generation := 0
 	bestToSortErr := MaxError
+	wantSorted := make([]int, len(toSort))
+	copy(wantSorted, toSort)
+	sort.Ints(wantSorted)
 	for ; generation < maxGen; generation++ {
 		p.CalcErrors(errorFn)
 		st := p.Stats(ps.ErrThreshold)
@@ -389,18 +392,18 @@ func (p *Population) DoYourThing(ps Conf, errorFn ErrorFunction, rng *rand.Rand,
 			want := make([]int, len(origInp))
 			copy(want, origInp)
 			sort.Ints(want)
-			log.Printf("gen %5d - avgErr %1.3f - err<%1.2f = %2d - avgNSteps/inp %2.1f - genBest %s err %.3f.\norig: %v\ngot:  %v\nwant: %v\n<%s>\n",
+			log.Printf("gen %4d - avgErr %1.3f - err<%1.2f = %2d - avgNSteps/inp %2.1f - genBest %s err %.3f.\norig: %v\ngot:  %v\nwant: %v\n<%s>\n",
 				generation, st.AvgErr, ps.ErrThreshold, len(st.LowErr), st.AvgNSteps/float64(len(origInp)), genBest.ID, genBest.Error,
 				origInp, genBest.Int, want, genBest.Genome.String())
 		}
 
-		if zeros := st.LowErr; len(zeros) != 0 {
-			for _, critter := range zeros {
-				toSortErr := errorFn(critter, toSort...)
+		if candidates := st.LowErr; len(candidates) != 0 {
+			for _, candidate := range candidates {
+				toSortErr := errorFn(candidate, toSort...)
 				if toSortErr < bestToSortErr {
-					log.Printf("gen %5d - best sort of your array so far (error %1.3f) :\norig: %v\nnow:  %v", generation, toSortErr, toSort, critter.Int)
+					log.Printf("gen %4d - best sort of your array so far (error %1.3f) :\norig: %v\nnow:  %v\nwant: %v", generation, toSortErr, toSort, candidate.Int, wantSorted)
 					bestToSortErr = toSortErr
-					best = critter
+					best = candidate
 				}
 			}
 		}
@@ -514,7 +517,7 @@ func SortErrorGen(minSize, maxSize int, ignoreStepErrs bool, rng *rand.Rand) Err
 func genTestSlice(inpLen int, rng *rand.Rand) (inp []int, want []int) {
 	inp = make([]int, inpLen)
 	for i := range inp {
-		inp[i] = rng.Intn(50)
+		inp[i] = rng.Intn(21)
 	}
 	want = make([]int, inpLen)
 	copy(want, inp)
