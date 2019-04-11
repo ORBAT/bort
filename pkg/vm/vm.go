@@ -14,7 +14,7 @@ var (
 	// total of 20 steps to do its thing.
 	MaxStepsPerInput = 10.0
 
-	MaxExecStackSize = 30
+	MaxExecStackSize = 15
 )
 
 type StackType uint8
@@ -297,6 +297,7 @@ func (fn OpFn) Op(n string) Op {
 type CPU struct {
 	Stacks
 	NSteps uint32
+	Err error
 	input  []int
 	rom    []interface{}
 	inpLen int
@@ -411,6 +412,11 @@ func (c *CPU) Step() (execDone bool, err error) {
 
 func (c *CPU) Run(ignoreStepErrs bool) (completed bool, err error) {
 	c.Reset()
+	defer func(){
+		if err != nil {
+			c.Err = err
+		}
+	}()
 	for {
 		if err := c.shouldStep(); err != nil {
 			if ignoreStepErrs == true {
@@ -471,20 +477,20 @@ func (fn StackFn) ToOpFn() OpFn {
 }
 
 var Ops = rawOpMap{
-	"len": func(cpu *CPU) error {
-		stack := cpu.PopStack()
-		cpu.Int.Push(cpu.OfType(stack).Len())
-		return nil
-	},
+	// "len": func(cpu *CPU) error {
+	// 	stack := cpu.PopStack()
+	// 	cpu.Int.Push(cpu.OfType(stack).Len())
+	// 	return nil
+	// },
 	// "rot": StackFn((*Stack).Rot).ToOpFn(),
 	// "rot3":  StackFn((*Stack).Rot3).ToOpFn(),
-	"dup":  StackFn((*Stack).Dup).ToOpFn(),
-	"swap": StackFn((*Stack).Swap).ToOpFn(),
-	"over": StackFn((*Stack).Over).ToOpFn(),
-	"nip":  StackFn((*Stack).Over).ToOpFn(),
-	"tuck": StackFn((*Stack).Over).ToOpFn(),
-	"reset": StackFn((*Stack).Reset).ToOpFn(),
-	"drop": StackFn((*Stack).Drop).ToOpFn(),
+	// "dup":  StackFn((*Stack).Dup).ToOpFn(),
+	// "swap": StackFn((*Stack).Swap).ToOpFn(),
+	// "over": StackFn((*Stack).Over).ToOpFn(),
+	// "nip":  StackFn((*Stack).Over).ToOpFn(),
+	// "tuck": StackFn((*Stack).Over).ToOpFn(),
+	// "reset": StackFn((*Stack).Reset).ToOpFn(),
+	// "drop": StackFn((*Stack).Drop).ToOpFn(),
 	// "yank": func(cpu *CPU) error {
 	// 	stack := cpu.PopStack()
 	// 	stackToYank := cpu.OfType(stack)
@@ -561,9 +567,9 @@ var Ops = rawOpMap{
 	// },
 
 	// "exec":  StackExec.ToOpFn(),
-	"bool":  StackBool.ToOpFn(),
-	"stack": StackBool.ToOpFn(),
-	"int":   StackInt.ToOpFn(),
+	// "bool":  StackBool.ToOpFn(),
+	// "stack": StackBool.ToOpFn(),
+	// "int":   StackInt.ToOpFn(),
 	//
 	// "lt": func(cpu *CPU) error {
 	// 	// int: ( a b -- )
@@ -590,33 +596,33 @@ var Ops = rawOpMap{
 	// },
 
 	// bool: (a b -- a && b)
-	"and": func(cpu *CPU) error {
-		b, err := cpu.Bool.Pop()
-		if err != nil {
-			return err
-		}
-		a, err := cpu.Bool.Pop()
-		if err != nil {
-			return err
-		}
-		cpu.Bool.Push(a.(bool) && b.(bool))
-		return nil
-	},
-
-	// bool: (a b -- a || b)
-	"or": func(cpu *CPU) error {
-		b, err := cpu.Bool.Pop()
-		if err != nil {
-			return err
-		}
-		a, err := cpu.Bool.Pop()
-		if err != nil {
-			return err
-		}
-		cpu.Bool.Push(a.(bool) || b.(bool))
-		return nil
-	},
-
+	// "and": func(cpu *CPU) error {
+	// 	b, err := cpu.Bool.Pop()
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	a, err := cpu.Bool.Pop()
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	cpu.Bool.Push(a.(bool) && b.(bool))
+	// 	return nil
+	// },
+	//
+	// // bool: (a b -- a || b)
+	// "or": func(cpu *CPU) error {
+	// 	b, err := cpu.Bool.Pop()
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	a, err := cpu.Bool.Pop()
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	cpu.Bool.Push(a.(bool) || b.(bool))
+	// 	return nil
+	// },
+	//
 	"not": func(cpu *CPU) error {
 		b, err := cpu.Bool.Pop()
 		if err != nil {
@@ -654,7 +660,7 @@ var Ops = rawOpMap{
 		return nil
 	},
 
-	"y": y,
+	// "y": y,
 	//
 	// "repeat": func(cpu *CPU) error {
 	// 	if cpu.Exec.Len() < 2 {
@@ -675,25 +681,30 @@ var Ops = rawOpMap{
 	// 	return nil
 	// },
 
-	// "halt": func(cpu *CPU) error {
-	// 	cpu.halt = true
-	// 	return nil
-	// },
+	"halt": func(cpu *CPU) error {
+		cpu.halt = true
+		return nil
+	},
 
-	"halt_sorted": func(cpu *CPU) error {
+	"nop": func(cpu *CPU) error {
+		return nil
+	},
+
+	"sorted": func(cpu *CPU) error {
 		if len(cpu.Int) == 0 {
 			return nil
 		}
 		prevInt := cpu.Int[0].(int)
 		for _, iint := range cpu.Int {
 			if i := iint.(int); i < prevInt {
+				cpu.Bool.Push(false)
 				return nil
 			} else {
 				prevInt = i
 			}
 		}
 
-		cpu.halt = true
+		cpu.Bool.Push(true)
 		return nil
 	},
 

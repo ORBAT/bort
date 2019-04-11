@@ -285,9 +285,9 @@ func isIn(ints []int, i int) bool {
 }
 
 // Mutate a part of the population, and return a new population with only mutated critters + the best of p
-func (p Population) Mutate(rng *rand.Rand, ps Probabilities) Population {
+func (p Population) Mutate(rng *rand.Rand, ps Conf) Population {
 	nToMutate := ps.NToMutate(p)
-	newP := make(Population, nToMutate-1, nToMutate)
+	newP := make(Population, /*nToMutate-1, */nToMutate)
 	picked := make([]int, 0, nToMutate)
 	for i := range newP {
 		critter, idx := p.SelectRandom(rng)
@@ -297,13 +297,13 @@ func (p Population) Mutate(rng *rand.Rand, ps Probabilities) Population {
 		picked = append(picked, idx)
 		newP[i] = critter.Mutate(rng, ps.CrossoverMutP, ps.PointMutP, ps.TransposeMutP)
 	}
-	// elite selection
-	newP = append(newP, p.Best())
+	// // elite selection
+	// newP = append(newP, p.Best())
 	return newP
 }
 
 // Cross over a part of the population, and return a population with descendants only
-func (p Population) Cross(rng *rand.Rand, ps Probabilities) Population {
+func (p Population) Cross(rng *rand.Rand, ps Conf) Population {
 	newP := make(Population, ps.NToCrossover(p))
 	for i := range newP {
 		var (
@@ -319,7 +319,7 @@ func (p Population) Cross(rng *rand.Rand, ps Probabilities) Population {
 	return newP
 }
 
-type Probabilities struct {
+type Conf struct {
 	// The ratio of the population in a tournament, i.e. tournament size. The smaller this is, the
 	// likelier it is that less fit individuals will get to reproduce
 	TournamentRatio float64
@@ -336,67 +336,69 @@ type Probabilities struct {
 	// Percentage of a new population that is generated with crossover mating (the rest are
 	// generated with mutation)
 	CrossoverRatio float64
+
+	// ErrThreshold is the error under which the critter will try to sort toSort
+	ErrThreshold float64
 }
 
 // MutationRatio is a convenience method for 1 - ps.CrossoverRatio
-func (ps Probabilities) MutationRatio() float64 {
+func (ps Conf) MutationRatio() float64 {
 	return 1 - ps.CrossoverRatio
 }
 
 // NToMutate returns the number of individuals to mutate in p
-func (ps Probabilities) NToMutate(p Population) int {
+func (ps Conf) NToMutate(p Population) int {
 	return int(math.Floor(ps.MutationRatio() * float64(len(p))))
 }
 
 // NToCrossover returns the number of individuals to cross over in p
-func (ps Probabilities) NToCrossover(p Population) int {
+func (ps Conf) NToCrossover(p Population) int {
 	return int(math.Ceil(ps.CrossoverRatio * float64(len(p))))
 }
 
 type Stats struct {
 	AvgErr, AvgNSteps float64
-	ZeroErr           Population
+	LowErr            Population
 }
 
-func (p *Population) Stats() Stats {
+func (p *Population) Stats(errThreshold float64) Stats {
 	popSize := float64(len(*p))
 	errSum := 0.0
 	nStepSum := 0.0
-	zeroErr := Population{}
+	lowErr := Population{}
 	for _, cr := range *p {
 		errSum += cr.Error
 		nStepSum += float64(cr.NSteps)
-		if cr.Error == 0 {
-			zeroErr = append(zeroErr, cr)
+		if cr.Error < errThreshold {
+			lowErr = append(lowErr, cr)
 		}
 	}
-	return Stats{errSum / popSize, nStepSum / popSize, zeroErr}
+	return Stats{errSum / popSize, nStepSum / popSize, lowErr}
 }
 
-func (p *Population) DoYourThing(ps Probabilities, errorFn ErrorFunction, rng *rand.Rand, maxGen int, toSort []int, ignoreErrs bool) (pop Population, best Critter) {
+func (p *Population) DoYourThing(ps Conf, errorFn ErrorFunction, rng *rand.Rand, maxGen int, toSort []int, ignoreErrs bool) (pop Population, best Critter) {
 	generation := 0
+	bestToSortErr := MaxError
 	for ; generation < maxGen; generation++ {
 		p.CalcErrors(errorFn)
-		st := p.Stats()
+		st := p.Stats(ps.ErrThreshold)
 
-		bestToSortErr := MaxError
-
-		if generation%1000 == 0 {
+		if generation%10 == 0 {
 			genBest := p.Best()
 			origInp := genBest.OrigInput()
 			want := make([]int, len(origInp))
 			copy(want, origInp)
 			sort.Ints(want)
-			log.Printf("gen %5d - avgErr %1.3f - no err %2d - avgNSteps/inp %2.1f - genBest %s err %.3f.\norig: %v\ngot:  %v\nwant: %v\n",
-				generation, st.AvgErr, len(st.ZeroErr), st.AvgNSteps/float64(len(origInp)), genBest.ID, genBest.Error,
-				origInp, genBest.Int, want)
+			log.Printf("gen %5d - avgErr %1.3f - err<%1.2f = %2d - avgNSteps/inp %2.1f - genBest %s err %.3f.\norig: %v\ngot:  %v\nwant: %v\n<%s>\n",
+				generation, st.AvgErr, ps.ErrThreshold, len(st.LowErr), st.AvgNSteps/float64(len(origInp)), genBest.ID, genBest.Error,
+				origInp, genBest.Int, want, genBest.Genome.String())
 		}
 
-		if zeros := st.ZeroErr; len(zeros) != 0 {
+		if zeros := st.LowErr; len(zeros) != 0 {
 			for _, critter := range zeros {
 				toSortErr := errorFn(critter, toSort...)
 				if toSortErr < bestToSortErr {
-					log.Printf("gen %5d - best sort of your array so far (error %1.3f) :\norig: %v\nnow:  %v", generation, critter.Error, toSort, critter.Int)
+					log.Printf("gen %5d - best sort of your array so far (error %1.3f) :\norig: %v\nnow:  %v", generation, toSortErr, toSort, critter.Int)
 					bestToSortErr = toSortErr
 					best = critter
 				}
@@ -489,8 +491,8 @@ func SortErrorGen(minSize, maxSize int, ignoreStepErrs bool, rng *rand.Rand) Err
 		if isSame(outp, want) {
 			return 0
 		}
-
-		return float64(levenshtein(outp, want)) / float64(max(outLen, inpLen))
+		errv := float64(levenshtein(outp, want)) / float64(max(outLen, inpLen))
+		return errv
 
 		// outLen := len(outp)
 		// if outLen != inpLen {

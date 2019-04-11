@@ -26,15 +26,16 @@ func main() {
 		nums = append(nums, n)
 	}
 
-	probs := life.Probabilities{
-		CrossoverRatio: 0.95,
-		CrossoverMutP: 0.005,
-		PointMutP: 0.01,
-		TransposeMutP: 0.01,
-		TournamentP: 0.75,
-		TournamentRatio: 0.33,
+	probs := life.Conf{
+		CrossoverRatio: 0.70,
+		CrossoverMutP: 0.01,
+		PointMutP: 0.08,
+		TransposeMutP: 0.08,
+		TournamentP: 0.65,
+		TournamentRatio: 0.15,
+		ErrThreshold: 0.3,
 	}
 
-	p := life.NewPopulation(30, vm.MaxExecStackSize, life.NewRNG(0))
-	p.DoYourThing(probs, life.SortErrorGen(3, 8, true, life.NewRNG(0)), life.NewRNG(0), 500000, nums, true)
+	p := life.NewPopulation(300, vm.MaxExecStackSize, life.NewRNG(0))
+	p.DoYourThing(probs, life.SortErrorGen(7, 10, true, life.NewRNG(0)), life.NewRNG(0), 1000, nums, true)
 }
