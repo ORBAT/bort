@@ -8,13 +8,13 @@ import (
 )
 
 // general VM settings
-var (
+const (
 	// MaxStepsPerInput governs how many steps per each input item each individual can run. For
 	// example, for an input of length 5 and MaxStepsPerInput of 4, each individual would have a
 	// total of 20 steps to do its thing.
-	MaxStepsPerInput = 7.0
+	MaxStepsPerInput = 9.0
 
-	MaxExecStackSize = 40
+	MaxExecStackSize = 17
 )
 
 type StackType uint8
@@ -307,24 +307,45 @@ type CPU struct {
 }
 
 func (c *CPU) IncrISP1() error {
-	c.isp1++
+	ii, err := c.Int.Pop()
+	if err != nil {
+		return err
+	}
+
+	c.isp1+= uint16(ii.(int))
 	return nil
 }
 
 func (c *CPU) IncrISP2() error {
-	c.isp2++
+	ii, err := c.Int.Pop()
+	if err != nil {
+		return err
+	}
+
+	c.isp2+= uint16(ii.(int))
 	return nil
 }
 
 func (c *CPU) DecrISP1() error {
-	c.isp1--
+	ii, err := c.Int.Pop()
+	if err != nil {
+		return err
+	}
+
+	c.isp1-= uint16(ii.(int))
 	return nil
 }
 
 func (c *CPU) DecrISP2() error {
-	c.isp2--
+	ii, err := c.Int.Pop()
+	if err != nil {
+		return err
+	}
+
+	c.isp2-= uint16(ii.(int))
 	return nil
 }
+
 
 func (c *CPU) ispToIdx(isp uint16) int {
 	return int(isp) % (c.Int.Len() - 1)
@@ -489,8 +510,8 @@ var Ops = rawOpMap{
 	"over": StackFn((*Stack).Over).ToOpFn(),
 	"nip":  StackFn((*Stack).Over).ToOpFn(),
 	"tuck": StackFn((*Stack).Over).ToOpFn(),
-	// "reset": StackFn((*Stack).Reset).ToOpFn(),
-	// "drop": StackFn((*Stack).Drop).ToOpFn(),
+	"reset": StackFn((*Stack).Reset).ToOpFn(),
+	"drop": StackFn((*Stack).Drop).ToOpFn(),
 	// "yank": func(cpu *CPU) error {
 	// 	stack := cpu.PopStack()
 	// 	stackToYank := cpu.OfType(stack)
@@ -567,9 +588,9 @@ var Ops = rawOpMap{
 	// },
 
 	// "exec":  StackExec.ToOpFn(),
-	// "bool":  StackBool.ToOpFn(),
+	"bool":  StackBool.ToOpFn(),
 	// "stack": StackBool.ToOpFn(),
-	// "int":   StackInt.ToOpFn(),
+	"int":   StackInt.ToOpFn(),
 	//
 	// "lt": func(cpu *CPU) error {
 	// 	// int: ( a b -- )
@@ -681,12 +702,20 @@ var Ops = rawOpMap{
 	// 	return nil
 	// },
 
-	"halt_if_true": func(cpu *CPU) error {
-		ib, err := cpu.Bool.Pop()
-		if err != nil {
+	"halt_if_sorted": func(cpu *CPU) error {
+		if len(cpu.Int) == 0 {
 			return nil
 		}
-		cpu.halt = ib.(bool)
+		prevInt := cpu.Int[0].(int)
+		for _, iint := range cpu.Int {
+			if i := iint.(int); i < prevInt {
+				return nil
+			} else {
+				prevInt = i
+			}
+		}
+
+		cpu.halt = true
 		return nil
 	},
 
@@ -694,23 +723,23 @@ var Ops = rawOpMap{
 		return nil
 	},
 
-	"sorted": func(cpu *CPU) error {
-		if len(cpu.Int) == 0 {
-			return nil
-		}
-		prevInt := cpu.Int[0].(int)
-		for _, iint := range cpu.Int {
-			if i := iint.(int); i < prevInt {
-				cpu.Bool.Push(false)
-				return nil
-			} else {
-				prevInt = i
-			}
-		}
-
-		cpu.Bool.Push(true)
-		return nil
-	},
+	// "sorted": func(cpu *CPU) error {
+	// 	if len(cpu.Int) == 0 {
+	// 		return nil
+	// 	}
+	// 	prevInt := cpu.Int[0].(int)
+	// 	for _, iint := range cpu.Int {
+	// 		if i := iint.(int); i < prevInt {
+	// 			cpu.Bool.Push(false)
+	// 			return nil
+	// 		} else {
+	// 			prevInt = i
+	// 		}
+	// 	}
+	//
+	// 	cpu.Bool.Push(true)
+	// 	return nil
+	// },
 
 	"incr_isp1": (*CPU).IncrISP1,
 	"incr_isp2": (*CPU).IncrISP2,
@@ -719,16 +748,3 @@ var Ops = rawOpMap{
 	"lt_isps":   (*CPU).LTISPs,
 	"swap_isps": (*CPU).SwapISPs,
 }.ToOps()
-
-// func init() {
-// 	for i := 0; i < 100; i++ {
-// 		n := strconv.Itoa(i)
-// 		Ops[n] = Op{
-// 			Name: n,
-// 			fn: func(cpu *CPU) error {
-// 				cpu.Int.Push(i)
-// 				return nil
-// 			},
-// 		}
-// 	}
-// }

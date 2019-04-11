@@ -17,6 +17,39 @@ const MaxError = 1.0
 
 type Genome []vm.Op
 
+type Vector []float64
+
+func (v Vector) EuclidDist(other Vector) float64 {
+	lenV := len(v)
+	lenOther := len(other)
+	var (
+		longer, shorter   = other, v
+		shortLen = lenV
+	)
+	if lenV > lenOther {
+		longer, shorter = v, other
+		shortLen = lenOther
+	}
+	sumSqDiffs := 0.0
+	for longerIdx, longerVal := range longer {
+		var shortVal float64
+		if longerIdx < shortLen {
+			shortVal = shorter[longerIdx]
+		}
+		diff := longerVal - shortVal
+		sumSqDiffs += diff * diff
+	}
+	return math.Sqrt(sumSqDiffs)
+}
+
+func (g Genome) ToVector() Vector {
+	v := make(Vector, 0, len(g))
+	for _, op := range g {
+		v = append(v, opValues[op.Name])
+	}
+	return v
+}
+
 func (g Genome) String() string {
 	if len(g) == 0 {
 		panic("empty genome?")
@@ -42,8 +75,8 @@ func (c Critter) String() string {
 
 // Mutate a critter. xoverP gives the probability of crossover mutation, pointMutP for point
 // mutation and transposeMutP for transposition.
-func (c Critter) Mutate(rng *rand.Rand, xoverP, pointMutP, transposeMutP float64) Critter {
-	if rng.Float64() < xoverP {
+func (c Critter) Mutate(rng *rand.Rand, cfg *Conf) Critter {
+	if rng.Float64() < cfg.CrossoverMutP {
 		cg := CritterGenerator(vm.MaxExecStackSize, rng)
 		return c.Cross(cg(), rng)
 	}
@@ -52,11 +85,11 @@ func (c Critter) Mutate(rng *rand.Rand, xoverP, pointMutP, transposeMutP float64
 	newGen := make([]vm.Op, genomeLen)
 	copy(newGen, c.Genome)
 	for i := range newGen {
-		if rng.Float64() < pointMutP {
+		if rng.Float64() < cfg.PointMutP {
 			newGen[i] = opGen()
 		}
 
-		if rng.Float64() < transposeMutP {
+		if rng.Float64() < cfg.TransposeMutP {
 			otherPos := i
 			for otherPos == i {
 				otherPos = rng.Intn(genomeLen)
@@ -116,7 +149,7 @@ func (c Critter) crossSimple(other Critter, rng *rand.Rand, tries int) (offsprin
 }
 
 // 3-way cross
-func (c Critter) cross(other Critter, randGen *rand.Rand, tries int) (offspring Critter) {
+func (c Critter) cross(other Critter, randGen *rand.Rand, tries int, cfg *Conf) (offspring Critter) {
 	if tries > 4 {
 		return c
 	}
@@ -139,9 +172,9 @@ func (c Critter) cross(other Critter, randGen *rand.Rand, tries int) (offspring 
 	offspringGenome = append(offspringGenome, a.Genome[aMaxPt:]...)
 
 	if offl := len(offspringGenome); offl < 2 || offl > vm.MaxExecStackSize {
-		return c.cross(other, randGen, tries+1)
+		return c.cross(other, randGen, tries+1, nil)
 	}
-	return NewCritter(offspringGenome)
+	return NewCritter(offspringGenome).Mutate(randGen, cfg)
 }
 
 // Cross crosses c with other using two crossover points, producing one offspring genome.
@@ -285,9 +318,9 @@ func isIn(ints []int, i int) bool {
 }
 
 // Mutate a part of the population, and return a new population with only mutated critters + the best of p
-func (p Population) Mutate(rng *rand.Rand, ps Conf) Population {
-	nToMutate := ps.NToMutate(p)
-	newP := make(Population, /*nToMutate-1, */nToMutate)
+func (p Population) Mutate(rng *rand.Rand, cfg *Conf) Population {
+	nToMutate := cfg.NToMutate(p)
+	newP := make(Population, /*nToMutate-1, */ nToMutate)
 	picked := make([]int, 0, nToMutate)
 	for i := range newP {
 		critter, idx := p.SelectRandom(rng)
@@ -295,24 +328,24 @@ func (p Population) Mutate(rng *rand.Rand, ps Conf) Population {
 			critter, idx = p.SelectRandom(rng)
 		}
 		picked = append(picked, idx)
-		newP[i] = critter.Mutate(rng, ps.CrossoverMutP, ps.PointMutP, ps.TransposeMutP)
+		newP[i] = critter.Mutate(rng, cfg)
 	}
 	// // elite selection
-	// newP = append(newP, p.Best())
+	newP = append(newP, p.Best())
 	return newP
 }
 
 // Cross over a part of the population, and return a population with descendants only
-func (p Population) Cross(rng *rand.Rand, ps Conf) Population {
-	newP := make(Population, ps.NToCrossover(p))
+func (p Population) Cross(rng *rand.Rand, cfg *Conf) Population {
+	newP := make(Population, cfg.NToCrossover(p))
 	for i := range newP {
 		var (
 			critter1, critter2 Critter
 			idx1, idx2         int
 		)
 		for idx1 == idx2 {
-			critter1, idx1 = p.Select(rng, ps.TournamentRatio, ps.TournamentP)
-			critter2, idx2 = p.Select(rng, ps.TournamentRatio, ps.TournamentP)
+			critter1, idx1 = p.Select(rng, cfg.TournamentRatio, cfg.TournamentP)
+			critter2, idx2 = p.Select(rng, cfg.TournamentRatio, cfg.TournamentP)
 		}
 		newP[i] = critter1.Cross(critter2, rng)
 	}
@@ -339,21 +372,25 @@ type Conf struct {
 
 	// ErrThreshold is the error under which the critter will try to sort toSort
 	ErrThreshold float64
+
+	// MinEuclDist is the smallest Euclidean distance to a partner that Select will allow (if at all
+	// possible)
+	MinEuclDist float64
 }
 
 // MutationRatio is a convenience method for 1 - ps.CrossoverRatio
-func (ps Conf) MutationRatio() float64 {
-	return 1 - ps.CrossoverRatio
+func (cfg *Conf) MutationRatio() float64 {
+	return 1 - cfg.CrossoverRatio
 }
 
 // NToMutate returns the number of individuals to mutate in p
-func (ps Conf) NToMutate(p Population) int {
-	return int(math.Floor(ps.MutationRatio() * float64(len(p))))
+func (cfg *Conf) NToMutate(p Population) int {
+	return int(math.Floor(cfg.MutationRatio() * float64(len(p))))
 }
 
 // NToCrossover returns the number of individuals to cross over in p
-func (ps Conf) NToCrossover(p Population) int {
-	return int(math.Ceil(ps.CrossoverRatio * float64(len(p))))
+func (cfg *Conf) NToCrossover(p Population) int {
+	return int(math.Ceil(cfg.CrossoverRatio * float64(len(p))))
 }
 
 type Stats struct {
@@ -376,7 +413,7 @@ func (p *Population) Stats(errThreshold float64) Stats {
 	return Stats{errSum / popSize, nStepSum / popSize, lowErr}
 }
 
-func (p *Population) DoYourThing(ps Conf, errorFn ErrorFunction, rng *rand.Rand, maxGen int, toSort []int, ignoreErrs bool) (pop Population, best Critter) {
+func (p *Population) DoYourThing(cfg *Conf, errorFn ErrorFunction, rng *rand.Rand, maxGen int, toSort []int, ignoreErrs bool) (pop Population, best Critter) {
 	generation := 0
 	bestToSortErr := MaxError
 	wantSorted := make([]int, len(toSort))
@@ -384,7 +421,7 @@ func (p *Population) DoYourThing(ps Conf, errorFn ErrorFunction, rng *rand.Rand,
 	sort.Ints(wantSorted)
 	for ; generation < maxGen; generation++ {
 		p.CalcErrors(errorFn)
-		st := p.Stats(ps.ErrThreshold)
+		st := p.Stats(cfg.ErrThreshold)
 
 		if generation%10 == 0 {
 			genBest := p.Best()
@@ -393,7 +430,7 @@ func (p *Population) DoYourThing(ps Conf, errorFn ErrorFunction, rng *rand.Rand,
 			copy(want, origInp)
 			sort.Ints(want)
 			log.Printf("gen %4d - avgErr %1.3f - err<%1.2f = %2d - avgNSteps/inp %2.1f - genBest %s err %.3f.\norig: %v\ngot:  %v\nwant: %v\n<%s>\n",
-				generation, st.AvgErr, ps.ErrThreshold, len(st.LowErr), st.AvgNSteps/float64(len(origInp)), genBest.ID, genBest.Error,
+				generation, st.AvgErr, cfg.ErrThreshold, len(st.LowErr), st.AvgNSteps/float64(len(origInp)), genBest.ID, genBest.Error,
 				origInp, genBest.Int, want, genBest.Genome.String())
 		}
 
@@ -408,8 +445,8 @@ func (p *Population) DoYourThing(ps Conf, errorFn ErrorFunction, rng *rand.Rand,
 			}
 		}
 
-		newPop := p.Mutate(rng, ps)
-		newPop = append(newPop, p.Cross(rng, ps)...)
+		newPop := p.Mutate(rng, cfg)
+		newPop = append(newPop, p.Cross(rng, cfg)...)
 		*p = newPop
 	}
 
@@ -474,7 +511,6 @@ func SortErrorGen(minSize, maxSize int, ignoreStepErrs bool, rng *rand.Rand) Err
 			sort.Ints(want)
 		}
 
-
 		_, err := c.Input(inp).Run(ignoreStepErrs)
 		if err != nil {
 			return MaxError
@@ -536,16 +572,23 @@ func maybeUnixNano(seed int64) int64 {
 }
 
 var opNames []string
+var opValues map[string]float64 // op name -> normalized value for that op, idx/(len(opNames))
 
 func init() {
-	opNames = make([]string, 0, len(vm.Ops))
+	nOps := len(vm.Ops)
+	opNames = make([]string, 0, nOps)
 	for name := range vm.Ops {
 		opNames = append(opNames, name)
 	}
 	sort.Strings(opNames)
+	opValues = make(map[string]float64, nOps)
+	for i, name := range opNames {
+		opValues[name] = float64(i) / float64(nOps)
+	}
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 }
 
+// based on https://github.com/agnivade/levenshtein/blob/master/levenshtein.go
 func levenshtein(s1, s2 []int) int {
 	if len(s1) == 0 {
 		return len(s2)

@@ -18,6 +18,14 @@ func TestCross(t *testing.T) {
 
 func TestMutate(t *testing.T) {
 	cr1 := NewCritter([]vm.Op{vm.Ops["rot"], vm.Ops["rot3"], vm.Ops["rot"], vm.Ops["rot3"], vm.Ops["rot"], vm.Ops["rot3"], vm.Ops["rot"], vm.Ops["rot3"], vm.Ops["rot"], vm.Ops["rot3"], vm.Ops["rot"], vm.Ops["rot3"]})
-	crm := cr1.Mutate(NewRNG(3), 1, 0, 0)
+	crm := cr1.Mutate(NewRNG(3), &Conf{
+		TournamentRatio: 0,
+		TournamentP:     0,
+		CrossoverMutP:   1,
+		PointMutP:       0,
+		TransposeMutP:   0,
+		CrossoverRatio:  0,
+		ErrThreshold:    0,
+	})
 	t.Log(crm.String())
 }
