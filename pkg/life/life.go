@@ -542,7 +542,7 @@ func SortErrorGen(minSize, maxSize int, ignoreStepErrs bool, rng *rand.Rand) Err
 		}
 		outp := fucking.IntSlice(c.Int)
 
-		outLen := len(outp)
+		// outLen := len(outp)
 
 		// if inpLen != outLen {
 		// 	return MaxError
@@ -555,8 +555,9 @@ func SortErrorGen(minSize, maxSize int, ignoreStepErrs bool, rng *rand.Rand) Err
 		if isSame(outp, want) {
 			return 0
 		}
-		errv := float64(levenshtein(outp, want)) / float64(max(outLen, inpLen))
-		return errv
+		//  float64(levenshtein(outp, want)) / float64(max(outLen, inpLen))
+		// posDistance only works if len(want)==len(outp)
+		return posDistance(want, outp)
 
 		// outLen := len(outp)
 		// if outLen != inpLen {
@@ -611,6 +612,39 @@ func init() {
 		opValues[name] = float64(i) / float64(nOps)
 	}
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+}
+
+func idxOf(needle int, haystack []int) int {
+	for i, hay := range haystack {
+		if hay == needle {
+			return i
+		}
+	}
+	return -1
+}
+
+func posDistance(want, got []int) float64 {
+	if len(want) != len(got) {
+		panic("this shit only works if want and got are the same length")
+	}
+
+	sumSqErr := 0.0
+	min, max := math.MaxInt64, math.MinInt64
+
+	for wantIdx, wanted := range want {
+		if wanted < min {
+			min = wanted
+		} else if wanted > max {
+			max = wanted
+		}
+		goterr:=(idxOf(wanted, got) - wantIdx)
+		sumSqErr += float64(goterr*goterr)
+	}
+
+	errv:= sumSqErr / float64(max-min)
+	log.Printf("%.3f, %d, %d, %.3f\n%v\n%v",sumSqErr, min,max, errv,want,got)
+return errv
+	// sum / len(want)-1
 }
 
 // based on https://github.com/agnivade/levenshtein/blob/master/levenshtein.go
