@@ -12,7 +12,7 @@ var (
 	// MaxStepsPerInput governs how many steps per each input item each individual can run. For
 	// example, for an input of length 5 and MaxStepsPerInput of 4, each individual would have a
 	// total of 20 steps to do its thing.
-	MaxStepsPerInput = 8.0
+	MaxStepsPerInput = 10.0
 
 	MaxExecStackSize = 30
 )
@@ -301,6 +301,51 @@ type CPU struct {
 	rom    []interface{}
 	inpLen int
 	halt   bool
+
+	isp1, isp2 uint16
+}
+
+func (c *CPU) IncrISP1() error {
+	c.isp1++
+	return nil
+}
+
+func (c *CPU) IncrISP2() error {
+	c.isp2++
+	return nil
+}
+
+func (c *CPU) DecrISP1() error {
+	c.isp1--
+	return nil
+}
+
+func (c *CPU) DecrISP2() error {
+	c.isp2--
+	return nil
+}
+
+func (c *CPU) ispToIdx(isp uint16) int {
+	return int(isp) % (c.Int.Len() - 1)
+}
+
+func (c *CPU) SwapISPs() error {
+	if c.Int.Len() < 2 {
+		return CPUError("Can't swap ISPs when int stack len < 2")
+	}
+	a, b := c.ispToIdx(c.isp1), c.ispToIdx(c.isp2)
+	c.Int[a], c.Int[b] = c.Int[b], c.Int[a]
+	return nil
+}
+
+//   bool: ( -- c.Int[isp1] < c.Int[isp2] )
+func (c *CPU) LTISPs() error {
+	if c.Int.Len() < 2 {
+		return CPUError("Can't swap ISPs when int stack len < 2")
+	}
+	a, b := c.ispToIdx(c.isp1), c.ispToIdx(c.isp2)
+	c.Bool.Push(c.Int[a].(int) < c.Int[b].(int))
+	return nil
 }
 
 func (c CPU) Clone() *CPU {
@@ -319,7 +364,8 @@ func (c *CPU) OrigInput() []int {
 
 func (c *CPU) Reset() *CPU {
 	c.Stacks.Reset()
-	c.Exec = c.rom
+	c.Exec = make([]interface{}, len(c.rom))
+	copy(c.Exec, c.rom)
 	c.Int = fucking.InterfaceSlice(c.input)
 	c.NSteps = 0
 	return c
@@ -409,6 +455,9 @@ func y(cpu *CPU) error {
 	// include the topmost y in the clone, since the top of exec gets popped after each step anyhow
 	copy(clone, cpu.Exec)
 	cpu.Exec = append(cpu.Exec, clone...)
+	if cpu.Exec.Len() > MaxExecStackSize {
+		cpu.Exec = cpu.Exec[:MaxExecStackSize]
+	}
 	return nil
 }
 
@@ -422,127 +471,123 @@ func (fn StackFn) ToOpFn() OpFn {
 }
 
 var Ops = rawOpMap{
-	"inp_len": func(cpu *CPU) error {
-		cpu.Int.Push(cpu.inpLen)
+	"len": func(cpu *CPU) error {
+		stack := cpu.PopStack()
+		cpu.Int.Push(cpu.OfType(stack).Len())
 		return nil
 	},
-	// "len": func(cpu *CPU) error {
-	// 	stack := cpu.PopStack()
-	// 	cpu.Int.Push(cpu.OfType(stack).Len())
-	// 	return nil
-	// },
-	"rot": StackFn((*Stack).Rot).ToOpFn(),
+	// "rot": StackFn((*Stack).Rot).ToOpFn(),
 	// "rot3":  StackFn((*Stack).Rot3).ToOpFn(),
 	"dup":  StackFn((*Stack).Dup).ToOpFn(),
 	"swap": StackFn((*Stack).Swap).ToOpFn(),
 	"over": StackFn((*Stack).Over).ToOpFn(),
 	"nip":  StackFn((*Stack).Over).ToOpFn(),
 	"tuck": StackFn((*Stack).Over).ToOpFn(),
-	// "reset": StackFn((*Stack).Reset).ToOpFn(),
+	"reset": StackFn((*Stack).Reset).ToOpFn(),
 	"drop": StackFn((*Stack).Drop).ToOpFn(),
-	"yank": func(cpu *CPU) error {
-		stack := cpu.PopStack()
-		stackToYank := cpu.OfType(stack)
-		if stackToYank.Len() == 0 {
-			return CPUError("yank of empty stack " + stack.String())
-		}
-		nToYank, err := cpu.Int.Pop()
-		if err != nil {
-			return err
-		}
-		stackToYank.Yank(nToYank.(int))
-		return nil
-	},
+	// "yank": func(cpu *CPU) error {
+	// 	stack := cpu.PopStack()
+	// 	stackToYank := cpu.OfType(stack)
+	// 	if stackToYank.Len() == 0 {
+	// 		return CPUError("yank of empty stack " + stack.String())
+	// 	}
+	// 	nToYank, err := cpu.Int.Pop()
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	stackToYank.Yank(nToYank.(int))
+	// 	return nil
+	// },
+	//
+	// "shove": func(cpu *CPU) error {
+	// 	stack := cpu.PopStack()
+	// 	stackToShove := cpu.OfType(stack)
+	// 	if stackToShove.Len() == 0 {
+	// 		return CPUError("shove of empty stack " + stack.String())
+	// 	}
+	// 	nToShove, err := cpu.Int.Pop()
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	stackToShove.Shove(nToShove.(int))
+	// 	return nil
+	// },
+	//
+	// "copyat": func(cpu *CPU) error {
+	// 	stack := cpu.PopStack()
+	// 	stackToCopy := cpu.OfType(stack)
+	// 	if stackToCopy.Len() == 0 {
+	// 		return CPUError("copyat of empty stack " + stack.String())
+	// 	}
+	// 	nToCopy, err := cpu.Int.Pop()
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	stackToCopy.CopyAt(nToCopy.(int))
+	// 	return nil
+	// },
+	//
+	//
+	// "add": func(cpu *CPU) error {
+	// 	// int: (a b -- a+b)
+	// 	if cpu.Int.Len() < 2 {
+	// 		return CPUError("Int stack len wasn't 2")
+	// 	}
+	// 	b, _ := cpu.Int.Pop()
+	// 	a, _ := cpu.Int.Pop()
+	// 	cpu.Int.Push(a.(int) + b.(int))
+	// 	return nil
+	// },
+	//
+	// "mul": func(cpu *CPU) error {
+	// 	// int: (a b -- a*b)
+	// 	if cpu.Int.Len() < 2 {
+	// 		return CPUError("Int stack len wasn't 2")
+	// 	}
+	// 	b, _ := cpu.Int.Pop()
+	// 	a, _ := cpu.Int.Pop()
+	// 	cpu.Int.Push(a.(int) * b.(int))
+	// 	return nil
+	// },
 
-	"shove": func(cpu *CPU) error {
-		stack := cpu.PopStack()
-		stackToShove := cpu.OfType(stack)
-		if stackToShove.Len() == 0 {
-			return CPUError("shove of empty stack " + stack.String())
-		}
-		nToShove, err := cpu.Int.Pop()
-		if err != nil {
-			return err
-		}
-		stackToShove.Shove(nToShove.(int))
-		return nil
-	},
+	// "true": func(cpu *CPU) error {
+	// 	cpu.Bool.Push(true)
+	// 	return nil
+	// },
+	//
+	// "false": func(cpu *CPU) error {
+	// 	cpu.Bool.Push(false)
+	// 	return nil
+	// },
 
-	"copyat": func(cpu *CPU) error {
-		stack := cpu.PopStack()
-		stackToCopy := cpu.OfType(stack)
-		if stackToCopy.Len() == 0 {
-			return CPUError("copyat of empty stack " + stack.String())
-		}
-		nToCopy, err := cpu.Int.Pop()
-		if err != nil {
-			return err
-		}
-		stackToCopy.CopyAt(nToCopy.(int))
-		return nil
-	},
-
-
-	"add": func(cpu *CPU) error {
-		// int: (a b -- a+b)
-		if cpu.Int.Len() < 2 {
-			return CPUError("Int stack len wasn't 2")
-		}
-		b, _ := cpu.Int.Pop()
-		a, _ := cpu.Int.Pop()
-		cpu.Int.Push(a.(int) + b.(int))
-		return nil
-	},
-
-	"mul": func(cpu *CPU) error {
-		// int: (a b -- a*b)
-		if cpu.Int.Len() < 2 {
-			return CPUError("Int stack len wasn't 2")
-		}
-		b, _ := cpu.Int.Pop()
-		a, _ := cpu.Int.Pop()
-		cpu.Int.Push(a.(int) * b.(int))
-		return nil
-	},
-
-	"true": func(cpu *CPU) error {
-		cpu.Bool.Push(true)
-		return nil
-	},
-
-	"false": func(cpu *CPU) error {
-		cpu.Bool.Push(false)
-		return nil
-	},
-
-	"exec":  StackExec.ToOpFn(),
+	// "exec":  StackExec.ToOpFn(),
 	"bool":  StackBool.ToOpFn(),
 	"stack": StackBool.ToOpFn(),
 	"int":   StackInt.ToOpFn(),
-
-	"lt": func(cpu *CPU) error {
-		// int: ( a b -- )
-		// bool: ( -- a > b )
-		if cpu.Int.Len() < 2 {
-			return CPUError("Int stack len wasn't 2")
-		}
-		b, _ := cpu.Int.Pop()
-		a, _ := cpu.Int.Pop()
-		cpu.Bool.Push(a.(int) < b.(int))
-		return nil
-	},
-
-	"gt": func(cpu *CPU) error {
-		// int: ( a b -- )
-		// bool: ( -- a > b )
-		if cpu.Int.Len() < 2 {
-			return CPUError("Int stack len wasn't 2")
-		}
-		b, _ := cpu.Int.Pop()
-		a, _ := cpu.Int.Pop()
-		cpu.Bool.Push(a.(int) > b.(int))
-		return nil
-	},
+	//
+	// "lt": func(cpu *CPU) error {
+	// 	// int: ( a b -- )
+	// 	// bool: ( -- a > b )
+	// 	if cpu.Int.Len() < 2 {
+	// 		return CPUError("Int stack len wasn't 2")
+	// 	}
+	// 	b, _ := cpu.Int.Pop()
+	// 	a, _ := cpu.Int.Pop()
+	// 	cpu.Bool.Push(a.(int) < b.(int))
+	// 	return nil
+	// },
+	//
+	// "gt": func(cpu *CPU) error {
+	// 	// int: ( a b -- )
+	// 	// bool: ( -- a > b )
+	// 	if cpu.Int.Len() < 2 {
+	// 		return CPUError("Int stack len wasn't 2")
+	// 	}
+	// 	b, _ := cpu.Int.Pop()
+	// 	a, _ := cpu.Int.Pop()
+	// 	cpu.Bool.Push(a.(int) > b.(int))
+	// 	return nil
+	// },
 
 	// bool: (a b -- a && b)
 	"and": func(cpu *CPU) error {
@@ -651,6 +696,13 @@ var Ops = rawOpMap{
 		cpu.halt = true
 		return nil
 	},
+
+	"incr_isp1": (*CPU).IncrISP1,
+	"incr_isp2": (*CPU).IncrISP2,
+	"decr_isp1": (*CPU).DecrISP1,
+	"decr_isp2": (*CPU).DecrISP2,
+	"lt_isps":   (*CPU).LTISPs,
+	"swap_isps": (*CPU).SwapISPs,
 }.ToOps()
 
 // func init() {
