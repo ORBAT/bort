@@ -14,7 +14,7 @@ const (
 	// total of 20 steps to do its thing.
 	MaxStepsPerInput = 15.0
 
-	MaxExecStackSize = 13
+	MaxExecStackSize = 28
 )
 
 type StackType uint8
@@ -327,7 +327,7 @@ func (c *CPU) DecrISP2() error {
 }
 
 func (c *CPU) ispToIdx(isp uint16) int {
-	return int(isp) % (c.Int.Len() - 1)
+	return int(isp) % c.Int.Len()
 }
 
 func (c *CPU) SwapISPs() error {
@@ -403,14 +403,14 @@ func (c *CPU) shouldStep() error {
 // Step runs one step of the CPU. Returns true,nil if halt is executed. err has the error (if
 // any) returned by the last op
 func (c *CPU) Step() (execDone bool, err error) {
-	// if len(c.Exec) == 0{
-	// 	c.resetExec()
-	// } else if c.halt {
-	// 	return true, nil
-	// }
-	if len(c.Exec) == 0 || c.halt {
+	if len(c.Exec) == 0{
+		c.resetExec()
+	} else if c.halt {
 		return true, nil
 	}
+	// if len(c.Exec) == 0 || c.halt {
+	// 	return true, nil
+	// }
 	op := c.PeekExec()
 	err = op.fn(c)
 	c.Exec.Drop()
@@ -649,26 +649,26 @@ var Ops = rawOpMap{
 	//
 	// exec: ( cmd1 cmd2 if -- cmd2 )
 	// bool: ( true --)
-	"if": func(cpu *CPU) error {
-		if cpu.Exec.Len() < 3 {
-			return CPUError("Exec stack len wasn't at least 3")
-		}
+	// "if": func(cpu *CPU) error {
+	// 	if cpu.Exec.Len() < 3 {
+	// 		return CPUError("Exec stack len wasn't at least 3")
+	// 	}
+	//
+	// 	b, err := cpu.Bool.Pop()
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	//
+	// 	i := cpu.Exec.Len() - 2
+	// 	if b.(bool) == true {
+	// 		i = cpu.Exec.Len() - 3
+	// 	}
+	//
+	// 	cpu.Exec = append(cpu.Exec[:i], cpu.Exec[i+1:]...)
+	// 	return nil
+	// },
 
-		b, err := cpu.Bool.Pop()
-		if err != nil {
-			return err
-		}
-
-		i := cpu.Exec.Len() - 2
-		if b.(bool) == true {
-			i = cpu.Exec.Len() - 3
-		}
-
-		cpu.Exec = append(cpu.Exec[:i], cpu.Exec[i+1:]...)
-		return nil
-	},
-
-	"y": y,
+	// "y": y,
 
 	//
 	// "repeat": func(cpu *CPU) error {

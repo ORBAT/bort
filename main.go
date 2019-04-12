@@ -30,20 +30,20 @@ func main() {
 		}
 		nums = append(nums, n)
 	}
-	const popSz = 900
+	const popSz = 500
 	conf := &life.Conf{
-		CrossoverRatio:  0.85,
+		CrossoverRatio:  0.90,
 		CrossoverMutP:   0.01,
-		PointMutP:       0.006,
-		TransposeMutP:   0.006,
+		PointMutP:       0.01,
+		TransposeMutP:   0.01,
 		TournamentP:     0.75,
 		TournamentRatio: 2.0 / popSz,
 		ErrThreshold:    0.4,
-		MinEuclDist:     0.7,
+		MinEuclDist:     0.9,
 	}
 
 	p := life.NewPopulation(popSz, vm.MaxExecStackSize, life.NewRNG(0))
-	errorFn := life.SortErrorGen(5, 8, true, life.NewRNG(0))
-	_, _, sortaSorted := p.DoYourThing(conf, errorFn, life.NewRNG(0), 50000, nums)
+	errorFn := life.SortErrorGen(5, 25, true, life.NewRNG(0))
+	_, _, sortaSorted := p.DoYourThing(conf, errorFn, life.NewRNG(0), 1000, nums)
 	fmt.Printf("%v", sortaSorted)
 }

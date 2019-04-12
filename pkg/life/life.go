@@ -454,7 +454,7 @@ func (p *Population) DoYourThing(cfg *Conf, errorFn ErrorFunction, rng *rand.Ran
 			want := make([]int, len(origInp))
 			copy(want, origInp)
 			sort.Ints(want)
-			log.Printf("gen %4d - avgErr %1.3f - err<%1.2f = %2d - avgNSteps/inp %2.1f - genBest %s err %.3f.\norig: %v\ngot:  %v\nwant: %v\n<%s>\n",
+			log.Printf("gen %4d - avgErr %1.3f - err<%1.2f = %d - avgNSteps/inp %2.1f - genBest %s err %.3f.\norig: %v\ngot:  %v\nwant: %v\n<%s>\n",
 				generation, st.AvgErr, cfg.ErrThreshold, len(st.LowErr), st.AvgNSteps/float64(len(origInp)), genBest.ID, genBest.Error,
 				origInp, genBest.Int, want, genBest.String())
 		}
@@ -468,6 +468,10 @@ func (p *Population) DoYourThing(cfg *Conf, errorFn ErrorFunction, rng *rand.Ran
 					best = candidate
 					bestSort = candidate.Int
 				}
+				if toSortErr == 0 {
+					goto otog
+				}
+
 			}
 		}
 
@@ -475,7 +479,7 @@ func (p *Population) DoYourThing(cfg *Conf, errorFn ErrorFunction, rng *rand.Ran
 		newPop = append(newPop, p.Cross(rng, cfg)...)
 		*p = newPop
 	}
-
+otog:
 	return *p, best, bestSort
 }
 
@@ -549,9 +553,9 @@ func SortErrorGen(minSize, maxSize int, ignoreStepErrs bool, rng *rand.Rand) Err
 		// 	return MaxError
 		// }
 
-		if isSame(outp, inp) {
-			return MaxError
-		}
+		// if isSame(outp, inp) {
+		// 	return MaxError
+		// }
 
 		if isSame(outp, want) {
 			return 0
@@ -585,7 +589,7 @@ func genTestSlice(inpLen int, rng *rand.Rand) (inp []int, want []int) {
 	want = make([]int, inpLen)
 	copy(want, inp)
 	sort.Ints(want)
-	if posDistance(inp, want) < 0.7 {
+	if posDistance(inp, want) < 0.5 {
 		return genTestSlice(inpLen, rng)
 	}
 	return inp, want
@@ -628,7 +632,7 @@ func maxDist(len int) int {
 	if len == 1 {
 		return 0
 	}
-	
+
 	if len == 2 {
 		return 2
 	}
