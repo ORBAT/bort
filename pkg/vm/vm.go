@@ -12,9 +12,9 @@ const (
 	// MaxStepsPerInput governs how many steps per each input item each individual can run. For
 	// example, for an input of length 5 and MaxStepsPerInput of 4, each individual would have a
 	// total of 20 steps to do its thing.
-	MaxStepsPerInput = 50.0
+	MaxStepsPerInput = 15.0
 
-	MaxExecStackSize = 30
+	MaxExecStackSize = 13
 )
 
 type StackType uint8
@@ -403,6 +403,11 @@ func (c *CPU) shouldStep() error {
 // Step runs one step of the CPU. Returns true,nil if halt is executed. err has the error (if
 // any) returned by the last op
 func (c *CPU) Step() (execDone bool, err error) {
+	// if len(c.Exec) == 0{
+	// 	c.resetExec()
+	// } else if c.halt {
+	// 	return true, nil
+	// }
 	if len(c.Exec) == 0 || c.halt {
 		return true, nil
 	}

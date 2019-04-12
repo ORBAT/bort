@@ -33,5 +33,7 @@ func TestMutate(t *testing.T) {
 }
 
 func TestBla(t *testing.T) {
-
+	want := []int{1, 2, 3, 4, 5, 6, 7}
+	gots := []int{1, 2, 3, 4, 6, 7, 5}
+	t.Log(posDistance(want, gots))
 }

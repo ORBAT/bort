@@ -367,6 +367,7 @@ func (p Population) Cross(rng *rand.Rand, cfg *Conf) Population {
 		)
 		for idx1 == idx2 {
 			critter1, idx1 = p.Select(rng, cfg)
+			// critter2, idx2 = p.Select(rng, cfg)
 			critter2, idx2 = p.SelectFar(rng, cfg, critter1)
 		}
 		newP[i] = critter1.Cross(critter2, rng, cfg)
@@ -462,7 +463,7 @@ func (p *Population) DoYourThing(cfg *Conf, errorFn ErrorFunction, rng *rand.Ran
 			for _, candidate := range candidates {
 				toSortErr := errorFn(candidate, toSort...)
 				if toSortErr < bestToSortErr {
-					log.Printf("gen %4d - best sort of your array so far (error %1.3f) :\norig: %v\nnow:  %v\nwant: %v\n%s", generation, toSortErr, toSort, candidate.Int, wantSorted,candidate.String())
+					log.Printf("gen %4d - best sort of your array so far (error %1.3f) :\norig: %v\nnow:  %v\nwant: %v\n%s", generation, toSortErr, toSort, candidate.Int, wantSorted, candidate.String())
 					bestToSortErr = toSortErr
 					best = candidate
 					bestSort = candidate.Int
@@ -584,7 +585,7 @@ func genTestSlice(inpLen int, rng *rand.Rand) (inp []int, want []int) {
 	want = make([]int, inpLen)
 	copy(want, inp)
 	sort.Ints(want)
-	if levenshtein(inp, want) < inpLen/2 {
+	if posDistance(inp, want) < 0.7 {
 		return genTestSlice(inpLen, rng)
 	}
 	return inp, want
@@ -623,28 +624,47 @@ func idxOf(needle int, haystack []int) int {
 	return -1
 }
 
+func maxDist(len int) int {
+	if len == 1 {
+		return 0
+	}
+	
+	if len == 2 {
+		return 2
+	}
+
+	if len == 3 {
+		return 4
+	}
+
+	return (len-1)*2 + maxDist(len-2)
+}
+
 func posDistance(want, got []int) float64 {
-	if len(want) != len(got) {
+	lenWant := len(want)
+	if lenWant != len(got) {
 		panic("this shit only works if want and got are the same length")
 	}
 
-	sumSqErr := 0.0
-	min, max := math.MaxInt64, math.MinInt64
+	errSum := 0.0
+
+	// 2: 1 2  <- max err 1*2 = 2
+	// 3: 1 2 3 <- max err 2*2 + 0 = 4 (furthest you can get is 2)
+	// 4: 1 2 3 4 <- max err 3*2 + 2 = 8
+	// 5: 1 2 3 4 5 <- 4*2 + 4 = 12
+	// 6: 1 2 3 4 5 6 <- 5*2 + 8 = 18
+	// 7: 1 2 3 4 5 6 7 <- 6*2 + 12 = 24
+	// 8: 1 2 3 4 5 6 7 8 <- 7*2 + 18 = 32
 
 	for wantIdx, wanted := range want {
-		if wanted < min {
-			min = wanted
-		} else if wanted > max {
-			max = wanted
-		}
-		goterr:=(idxOf(wanted, got) - wantIdx)
-		sumSqErr += float64(goterr*goterr)
+		abse := float64(idxOf(wanted, got) - wantIdx)
+		// log.Println("abse",abse)
+		errSum += math.Abs(abse)
 	}
 
-	errv:= sumSqErr / float64(max-min)
-	log.Printf("%.3f, %d, %d, %.3f\n%v\n%v",sumSqErr, min,max, errv,want,got)
-return errv
-	// sum / len(want)-1
+	maxE := float64(maxDist(lenWant))
+	// log.Println("sum",errSum, "max",maxE)
+	return errSum / maxE
 }
 
 // based on https://github.com/agnivade/levenshtein/blob/master/levenshtein.go
