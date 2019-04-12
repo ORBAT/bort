@@ -9,12 +9,7 @@ import (
 
 // general VM settings
 const (
-	// MaxStepsPerInput governs how many steps per each input item each individual can run. For
-	// example, for an input of length 5 and MaxStepsPerInput of 4, each individual would have a
-	// total of 20 steps to do its thing.
 	MaxStepsPerInput = 15.0
-
-	MaxExecStackSize = 28
 )
 
 type StackType uint8
@@ -270,12 +265,13 @@ const (
 	ErrExecOverflow  = CPUError("Exec stack too large")
 )
 
-func NewCPU(exec []Op) *CPU {
+func NewCPU(exec []Op, maxExecSIze int) *CPU {
 	return &CPU{
 		Stacks: Stacks{
 			Exec: fucking.InterfaceSlice(exec),
 		},
-		rom: fucking.InterfaceSlice(exec),
+		rom:              fucking.InterfaceSlice(exec),
+		MaxExecStackSize: maxExecSIze,
 	}
 }
 
@@ -296,8 +292,10 @@ func (fn OpFn) Op(n string) Op {
 // CPU that executes Ops. The zero value is usable.
 type CPU struct {
 	Stacks
-	NSteps uint32
-	Err    error
+	NSteps           uint32
+	Err              error
+	MaxExecStackSize int
+
 	input  []int
 	rom    []interface{}
 	inpLen int
@@ -342,7 +340,8 @@ func (c *CPU) SwapISPs() error {
 //   bool: ( -- c.Int[isp1] < c.Int[isp2] )
 func (c *CPU) LTISPs() error {
 	if c.Int.Len() < 2 {
-		return CPUError("Can't swap ISPs when int stack len < 2")
+		c.Bool.Push(false)
+		return nil
 	}
 	a, b := c.ispToIdx(c.isp1), c.ispToIdx(c.isp2)
 	c.Bool.Push(c.Int[a].(int) < c.Int[b].(int))
@@ -368,6 +367,8 @@ func (c *CPU) Reset() *CPU {
 	c.resetExec()
 	c.Int = fucking.InterfaceSlice(c.input)
 	c.NSteps = 0
+	c.isp1 = 0
+	c.isp2 = 0
 	return c
 }
 
@@ -394,7 +395,7 @@ func (c *CPU) shouldStep() error {
 		return ErrStepsExceeded
 	}
 
-	if c.Exec.Len() > MaxExecStackSize {
+	if c.Exec.Len() > c.MaxExecStackSize {
 		return ErrExecOverflow
 	}
 	return nil
@@ -419,7 +420,6 @@ func (c *CPU) Step() (execDone bool, err error) {
 }
 
 func (c *CPU) Run(ignoreStepErrs bool) (completed bool, err error) {
-	c.Reset()
 	defer func() {
 		if err != nil {
 			c.Err = err
@@ -469,8 +469,8 @@ func y(cpu *CPU) error {
 	// include the topmost y in the clone, since the top of exec gets popped after each step anyhow
 	copy(clone, cpu.Exec)
 	cpu.Exec = append(cpu.Exec, clone...)
-	if cpu.Exec.Len() > MaxExecStackSize {
-		cpu.Exec = cpu.Exec[:MaxExecStackSize]
+	if cpu.Exec.Len() > cpu.MaxExecStackSize {
+		cpu.Exec = cpu.Exec[:cpu.MaxExecStackSize]
 	}
 	return nil
 }

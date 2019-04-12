@@ -72,6 +72,10 @@ type Critter struct {
 	ID    string
 }
 
+func (c Critter) GoString() string {
+	return fmt.Sprintf("<Critter %s Error=%.3f \nCPU %p %+v>\n", c.ID, c.Error, c.CPU, c.CPU)
+}
+
 func (c Critter) String() string {
 	return fmt.Sprintf("<Critter %s Error=%.3f Genome=\n%s>\n", c.ID, c.Error, c.Genome.String())
 }
@@ -80,7 +84,7 @@ func (c Critter) String() string {
 // mutation and transposeMutP for transposition.
 func (c Critter) Mutate(rng *rand.Rand, cfg *Conf) Critter {
 	if rng.Float64() < cfg.CrossoverMutP {
-		cg := CritterGenerator(vm.MaxExecStackSize, rng)
+		cg := CritterGenerator(cfg, rng)
 		return c.Cross(cg(), rng, cfg)
 	}
 	opGen := OpGenerator(rng)
@@ -100,7 +104,7 @@ func (c Critter) Mutate(rng *rand.Rand, cfg *Conf) Critter {
 			newGen[i], newGen[otherPos] = newGen[otherPos], newGen[i]
 		}
 	}
-	return NewCritter(newGen)
+	return NewCritter(newGen, cfg)
 }
 
 func minMax(a, b int) (min, max int) {
@@ -122,7 +126,7 @@ func (c Critter) crossPoints(randGen *rand.Rand) (a int, b int) {
 	return minMax(a, b)
 }
 
-func (c Critter) crossSimple(other Critter, rng *rand.Rand, tries int) (offspring Critter) {
+func (c Critter) crossSimple(other Critter, rng *rand.Rand, cfg *Conf, tries int) (offspring Critter) {
 	if tries > 4 {
 		return c
 	}
@@ -140,10 +144,10 @@ func (c Critter) crossSimple(other Critter, rng *rand.Rand, tries int) (offsprin
 	offsgen := make([]vm.Op, 0, (alen-ap)+(blen-bp))
 	offsgen = append(offsgen, a.Genome[:ap]...)
 	offsgen = append(offsgen, b.Genome[bp:]...)
-	if len(offsgen) < 3 || len(offsgen) > vm.MaxExecStackSize {
-		return c.crossSimple(other, rng, tries+1)
+	if len(offsgen) < 3 || len(offsgen) > cfg.MaxExecStackSize {
+		return c.crossSimple(other, rng, cfg, tries+1)
 	}
-	return NewCritter(offsgen)
+	return NewCritter(offsgen, cfg)
 	// alen 5, ap 2
 	// a: aa bb cc dd ee
 	// [aa bb]
@@ -174,10 +178,10 @@ func (c Critter) cross(other Critter, randGen *rand.Rand, tries int, cfg *Conf) 
 	offspringGenome = append(offspringGenome, b.Genome[bMinPt:bMaxPt+1]...)
 	offspringGenome = append(offspringGenome, a.Genome[aMaxPt:]...)
 
-	if offl := len(offspringGenome); offl < 2 || offl > vm.MaxExecStackSize {
+	if offl := len(offspringGenome); offl < 2 || offl > cfg.MaxExecStackSize {
 		return c.cross(other, randGen, tries+1, cfg)
 	}
-	return NewCritter(offspringGenome).Mutate(randGen, cfg)
+	return NewCritter(offspringGenome, cfg).Mutate(randGen, cfg)
 }
 
 // Cross crosses c with other using two crossover points, producing one offspring genome.
@@ -192,31 +196,31 @@ func (c Critter) cross(other Critter, randGen *rand.Rand, tries int, cfg *Conf) 
 //     0 1 f g h i j 6 7 8 9
 func (c Critter) Cross(other Critter, rng *rand.Rand, cfg *Conf) (offspring Critter) {
 	offspring = c.cross(other, rng, 0, cfg)
-	if len(offspring.Genome) > vm.MaxExecStackSize {
-		offspring.Genome = offspring.Genome[:vm.MaxExecStackSize]
+	if len(offspring.Genome) > cfg.MaxExecStackSize {
+		offspring.Genome = offspring.Genome[:cfg.MaxExecStackSize]
 	}
 	return offspring
 }
 
 type CritterGen func() Critter
 
-func CritterGenerator(maxOps int, rng *rand.Rand) CritterGen {
+func CritterGenerator(cfg *Conf, rng *rand.Rand) CritterGen {
 	opGen := OpGenerator(rng)
 	return func() Critter {
 		nOps := 0
 		for nOps < 2 {
-			nOps = rng.Intn(maxOps-1) + 1
+			nOps = rng.Intn(cfg.MaxExecStackSize-1) + 1
 		}
 		ops := make([]vm.Op, nOps)
 		for i := range ops {
 			ops[i] = opGen()
 		}
-		return NewCritter(ops)
+		return NewCritter(ops, cfg)
 	}
 }
 
-func NewCritter(ops []vm.Op) Critter {
-	return Critter{ops, vm.NewCPU(ops), MaxError, fmt.Sprintf("%p", &ops)}
+func NewCritter(ops []vm.Op, cfg *Conf) Critter {
+	return Critter{ops, vm.NewCPU(ops, cfg.MaxExecStackSize), MaxError, fmt.Sprintf("%p", &ops)}
 }
 
 type Population []Critter
@@ -378,7 +382,7 @@ func (p Population) Cross(rng *rand.Rand, cfg *Conf) Population {
 type Conf struct {
 	// The ratio of the population in a tournament, i.e. tournament size. The smaller this is, the
 	// likelier it is that less fit individuals will get to reproduce
-	TournamentRatio float64 `usage:"The ratio of the population in a tournament, i.e. tournament size. The smaller this is, the likelier it is that less fit individuals will get to reproduce. Might want to keep it low enough that only 1-2 critters will get selected"`
+	TournamentRatio float64 `usage:"The ratio of the population in a tournament, i.e. tournament size. The smaller this is, the likelier it is that less fit individuals will get to reproduce. Pass 0 to default to a fraction of the population that gives 2 tournament participants"`
 
 	// The likelihood that the best individual in a tournament will win
 	TournamentP float64 `usage:"The likelihood that the best individual in a tournament will win"`
@@ -399,7 +403,16 @@ type Conf struct {
 
 	// MinEuclDist is the smallest Euclidean distance to a partner that Select will allow (if at all
 	// possible)
-	MinEuclDist float64 `usage:"MinEuclDist is the smallest Euclidean distance to a partner that selection during reproduction will allow (if at all possible)"`
+	MinEuclDist float64 `usage:"the smallest Euclidean distance to a partner that selection during reproduction will allow (if at all possible)"`
+
+	MaxExecStackSize int `usage:"the maximum size of the exec stack"`
+
+	// MaxGenerations is the maximum number of generations to run
+	MaxGenerations int `usage:"the maximum number of generations to run"`
+
+	MaxStepsPerInput int `usage:"governs how many steps per each input item each individual can run. For example, for an input of length 5 and MaxStepsPerInput of 4, each individual would have a total of 20 steps to do its thing"`
+
+	PopSize int `usage:"Population size"`
 
 	Verbose bool `usage:"log spam"`
 }
@@ -439,13 +452,13 @@ func (p *Population) Stats(errThreshold float64) Stats {
 	return Stats{errSum / popSize, nStepSum / popSize, lowErr}
 }
 
-func (p *Population) DoYourThing(cfg *Conf, errorFn ErrorFunction, rng *rand.Rand, maxGen int, toSort []int) (pop Population, best Critter, bestSort []interface{}) {
+func (p *Population) DoYourThing(cfg *Conf, errorFn ErrorFunction, rng *rand.Rand, toSort []int) (pop Population, best Critter, bestSort []interface{}) {
 	generation := 0
 	bestToSortErr := MaxError
 	wantSorted := make([]int, len(toSort))
 	copy(wantSorted, toSort)
 	sort.Ints(wantSorted)
-	for ; generation < maxGen; generation++ {
+	for ; generation < cfg.MaxGenerations; generation++ {
 		p.CalcErrors(errorFn)
 		st := p.Stats(cfg.ErrThreshold)
 
@@ -498,9 +511,9 @@ func OpGenerator(rng *rand.Rand) func() vm.Op {
 	}
 }
 
-func NewPopulation(popSize, maxOps int, rng *rand.Rand) Population {
-	cg := CritterGenerator(maxOps, rng)
-	p := make(Population, popSize)
+func NewPopulation(cfg *Conf, rng *rand.Rand) Population {
+	cg := CritterGenerator(cfg, rng)
+	p := make(Population, cfg.PopSize)
 	for i := range p {
 		p[i] = cg()
 	}
@@ -550,39 +563,20 @@ func SortErrorGen(minSize, maxSize int, ignoreStepErrs bool, rng *rand.Rand) Err
 		if err != nil {
 			return MaxError
 		}
+
 		outp := fucking.IntSlice(c.Int)
 
-		// outLen := len(outp)
-
-		// if inpLen != outLen {
-		// 	return MaxError
-		// }
-
-		// if isSame(outp, inp) {
-		// 	return MaxError
-		// }
+		if isSame(outp, inp) {
+			return MaxError
+		}
 
 		if isSame(outp, want) {
 			return 0
 		}
+
 		//  float64(levenshtein(outp, want)) / float64(max(outLen, inpLen))
 		// positionalError only works if len(want)==len(outp)
 		return positionalError(want, outp)
-
-		// outLen := len(outp)
-		// if outLen != inpLen {
-		// 	return MaxError
-		// }
-		//
-		// errCount := 0
-		// for i, out := range outp {
-		// 	if want[i] != out {
-		// 		errCount++
-		// 	}
-		// }
-		//
-		// errv := float64(errCount) / float64(inpLen)
-		// return errv
 	}
 }
 
@@ -624,16 +618,37 @@ func init() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 }
 
-func idxOf(needle int, haystack []int) int {
-	for i, hay := range haystack {
-		if hay == needle {
-			return i
+// WHY DO I NEED TO FUCKING DO THIS MANUALLY GODDAMNIT IT'S 2019
+func abs(i int) int {
+	if i < 0 {
+		return -i
+	}
+	return i
+}
+
+// closestIdx finds the index of needle in haystack that's closest to wantIdx
+func closestIdx(needle, wantIdx int, haystack []int) int {
+	lenHays := len(haystack)
+	for i := 0; i < lenHays; i++ {
+		leftIdx := abs(wantIdx-i) % lenHays
+		left := haystack[leftIdx]
+		if left == needle {
+			return leftIdx
+		}
+		rightIdx := (wantIdx + i) % lenHays
+		if rightIdx == leftIdx {
+			continue
+		}
+		right := haystack[rightIdx]
+		if right == needle {
+			return rightIdx
 		}
 	}
 	return -1
 }
 
-func maxDist(len int) int {
+// TODO: unfuck. There has to be a better way to do this
+func maxDist(len int) float64 {
 	if len == 1 {
 		return 0
 	}
@@ -646,7 +661,7 @@ func maxDist(len int) int {
 		return 4
 	}
 
-	return (len-1)*2 + maxDist(len-2)
+	return float64((len-1)*2) + maxDist(len-2)
 }
 
 // positionalError calculates how different "got" is from "want", assuming that "got" is a permutation of
@@ -666,7 +681,7 @@ func maxDist(len int) int {
 // Now, this means that for a slice of length 4, the maximum sum of errors (i.e. the sum of how far
 // away each element is from the right spot) is always going to be at most 8; two elements can be 3
 // positions away, then the last two can be at most 1 away or in the right place (as there's only
-// two positions left for them to fill).
+// two positions left for them to fill). This "maximum error" is used to normalize the sum of errors of each element
 func positionalError(want, got []int) float64 {
 	lenWant := len(want)
 	if lenWant != len(got) {
@@ -685,28 +700,35 @@ func positionalError(want, got []int) float64 {
 	// length 7: 1 2 3 4 5 6 7 <- 6*2 + 12 = 24
 	// length 8: 1 2 3 4 5 6 7 8 <- 7*2 + 18 = 32
 
-	for wantIdx, wanted := range want {
-		abse := float64(idxOf(wanted, got) - wantIdx)
-		// log.Println("abse",abse)
-		errSum += math.Abs(abse)
-	}
 
-	return errSum / float64(maxDist(lenWant))
+	for wantIdx := 0; wantIdx < lenWant; wantIdx++ {
+		errSum += math.Abs(float64(closestIdx(want[wantIdx], wantIdx, got) - wantIdx))
+	}
+	return errSum / maxDist(lenWant)
+
+	// for wantIdx, wanted := range want {
+	// 	errSum += math.Abs(float64(closestIdx(wanted, wantIdx, got) - wantIdx))
+	// }
+
+	// return errSum / float64(maxDist(lenWant))
 }
 
 // based on https://github.com/agnivade/levenshtein/blob/master/levenshtein.go
-func levenshtein(s1, s2 []int) int {
+func levenshtein(s1, s2 []int) float64 {
 	if len(s1) == 0 {
-		return len(s2)
+		return 1
 	}
 
 	if len(s2) == 0 {
-		return len(s1)
+		return 1
 	}
 
 	if isSame(s1, s2) {
 		return 0
 	}
+
+	lenS1 := len(s1)
+	lenS2 := len(s2)
 
 	// We need to convert to []rune if the strings are non-ascii.
 	// This could be avoided by using utf8.RuneCountInString
@@ -719,9 +741,6 @@ func levenshtein(s1, s2 []int) int {
 	if len(s1) > len(s2) {
 		s1, s2 = s2, s1
 	}
-
-	lenS1 := len(s1)
-	lenS2 := len(s2)
 
 	// init the row
 	x := make([]int, lenS1+1)
@@ -747,5 +766,5 @@ func levenshtein(s1, s2 []int) int {
 		}
 		x[lenS1] = prev
 	}
-	return x[lenS1]
+	return float64(x[lenS1]) / float64(max(lenS1, lenS2))
 }

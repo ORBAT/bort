@@ -5,59 +5,41 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"reflect"
+	"path"
 	"strconv"
 	"strings"
-	"unsafe"
 
+	"github.com/ORBAT/bort/pkg/flagon"
 	"github.com/ORBAT/bort/pkg/life"
-	"github.com/ORBAT/bort/pkg/vm"
 )
-
-// var verbose = flag.Bool("verbose", false, "Log spam")
-var popSz = flag.Uint("popsize", 500, "Population size")
-
-func flagStruct(s interface{}) {
-	sVal := reflect.ValueOf(s).Elem()
-	sType := sVal.Type()
-	for i := 0; i < sType.NumField(); i++ {
-		typeField := sType.Field(i)
-		name := typeField.Name
-		name = strings.ToLower(name[:1]) + name[1:]
-		valField := sVal.Field(i)
-		valPtr := unsafe.Pointer(valField.Addr().Pointer())
-		fieldDescr := typeField.Tag.Get("usage")
-		if fieldDescr == "" {
-			fieldDescr = typeField.Name
-		}
-		switch t := typeField.Type.Kind(); t {
-		case reflect.Float64:
-			flag.Float64Var((*float64)(valPtr), name, *(*float64)(valPtr), fieldDescr)
-		case reflect.Bool:
-			flag.BoolVar((*bool)(valPtr), name, *(*bool)(valPtr), fieldDescr)
-		default:
-			log.Fatalf("I can't deal with fields of type %s", t.String())
-		}
-	}
-}
 
 func main() {
 	conf := &life.Conf{
 		CrossoverRatio:  0.90,
 		CrossoverMutP:   0.01,
-		PointMutP:       0.01,
-		TransposeMutP:   0.01,
-		TournamentP:     0.75,
-		TournamentRatio: 2.0 / 500.0,
+		PointMutP:       0.007,
+		TransposeMutP:   0.007,
+		TournamentP:     0.65,
+		TournamentRatio: 0.0,
 		ErrThreshold:    0.4,
 		MinEuclDist:     0.9,
+		MaxGenerations:  1000,
+		PopSize:         500,
 		Verbose:         false,
+		MaxExecStackSize: 28,
 	}
-	flagStruct(conf)
+	flagon.Struct(conf)
 
+	flag.Usage = func() {
+		progName := path.Base(os.Args[0])
+		_, _ = fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s: %s [options] 1,2,3,...\neg: %s -popSize 200 6,5,4,3,2\n\n", progName, progName, progName)
+		flag.PrintDefaults()
+	}
 	flag.Parse()
-	if len(flag.Args()) != 0 {
-		panic("the first and only non-flag argument must be a comma-separated list of integers")
+	if len(flag.Args()) != 1 {
+		_, _ = fmt.Fprintf(flag.CommandLine.Output(), "the first and only non-flag argument must be a comma-separated list of integers\n\n")
+		flag.Usage()
+		os.Exit(1)
 	}
 
 	log.SetOutput(os.Stderr)
@@ -73,8 +55,12 @@ func main() {
 		nums = append(nums, n)
 	}
 
-	p := life.NewPopulation(int(*popSz), vm.MaxExecStackSize, life.NewRNG(0))
+	if conf.TournamentRatio == 0 {
+		conf.TournamentRatio = 2/float64(conf.PopSize)
+	}
+
+	p := life.NewPopulation(conf, life.NewRNG(0))
 	errorFn := life.SortErrorGen(5, 25, true, life.NewRNG(0))
-	_, _, sortaSorted := p.DoYourThing(conf, errorFn, life.NewRNG(0), 2000, nums)
+	_, _, sortaSorted := p.DoYourThing(conf, errorFn, life.NewRNG(0), nums)
 	fmt.Printf("%v", sortaSorted)
 }

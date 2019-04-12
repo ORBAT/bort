@@ -36,10 +36,9 @@ true or not
 ## Installation & usage
 
 - install Go >=1.12
-- `go install github.com/ORBAT/bort`
+- `go install github.com/ORBAT/bort` (`bort -h` gives instructions)
 
-To run, pass in a comma-delimited list of numbers:
-- `bort 1,6,2,5,7,3,1` (or `bort -verbose 5,6,1,4` for more spam). You'll eventually see how well
-the best evolved sorter did with your array.
+To run, pass in a comma-delimited list of numbers: `bort 1,6,2,5,7,3,1` (or `bort -verbose 5,6,1,4`
+for more spam). You'll eventually see how well the best evolved sorter did with your array.
 
 Note that you may have to run `bort` several times, and it might not be able to sort your array.
