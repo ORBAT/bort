@@ -403,14 +403,14 @@ func (c *CPU) shouldStep() error {
 // Step runs one step of the CPU. Returns true,nil if halt is executed. err has the error (if
 // any) returned by the last op
 func (c *CPU) Step() (execDone bool, err error) {
-	if len(c.Exec) == 0{
-		c.resetExec()
-	} else if c.halt {
-		return true, nil
-	}
-	// if len(c.Exec) == 0 || c.halt {
+	// if len(c.Exec) == 0{
+	// 	c.resetExec()
+	// } else if c.halt {
 	// 	return true, nil
 	// }
+	if len(c.Exec) == 0 || c.halt {
+		return true, nil
+	}
 	op := c.PeekExec()
 	err = op.fn(c)
 	c.Exec.Drop()
@@ -649,26 +649,26 @@ var Ops = rawOpMap{
 	//
 	// exec: ( cmd1 cmd2 if -- cmd2 )
 	// bool: ( true --)
-	// "if": func(cpu *CPU) error {
-	// 	if cpu.Exec.Len() < 3 {
-	// 		return CPUError("Exec stack len wasn't at least 3")
-	// 	}
-	//
-	// 	b, err := cpu.Bool.Pop()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	//
-	// 	i := cpu.Exec.Len() - 2
-	// 	if b.(bool) == true {
-	// 		i = cpu.Exec.Len() - 3
-	// 	}
-	//
-	// 	cpu.Exec = append(cpu.Exec[:i], cpu.Exec[i+1:]...)
-	// 	return nil
-	// },
+	"if": func(cpu *CPU) error {
+		if cpu.Exec.Len() < 3 {
+			return CPUError("Exec stack len wasn't at least 3")
+		}
 
-	// "y": y,
+		b, err := cpu.Bool.Pop()
+		if err != nil {
+			return err
+		}
+
+		i := cpu.Exec.Len() - 2
+		if b.(bool) == true {
+			i = cpu.Exec.Len() - 3
+		}
+
+		cpu.Exec = append(cpu.Exec[:i], cpu.Exec[i+1:]...)
+		return nil
+	},
+
+	"y": y,
 
 	//
 	// "repeat": func(cpu *CPU) error {
@@ -690,22 +690,43 @@ var Ops = rawOpMap{
 	// 	return nil
 	// },
 
-	"halt_if_sorted": func(cpu *CPU) error {
+	"halt": func(cpu *CPU) error {
+		cpu.halt = true
+		return nil
+	},
+
+	"sorted": func(cpu *CPU) error {
 		if len(cpu.Int) == 0 {
 			return nil
 		}
 		prevInt := cpu.Int[0].(int)
 		for _, iint := range cpu.Int {
 			if i := iint.(int); i < prevInt {
-				return nil
+				cpu.Bool.Push(false)
 			} else {
 				prevInt = i
 			}
 		}
-
-		cpu.halt = true
+		cpu.Bool.Push(true)
 		return nil
 	},
+
+	// "halt_if_sorted": func(cpu *CPU) error {
+	// 	if len(cpu.Int) == 0 {
+	// 		return nil
+	// 	}
+	// 	prevInt := cpu.Int[0].(int)
+	// 	for _, iint := range cpu.Int {
+	// 		if i := iint.(int); i < prevInt {
+	// 			return nil
+	// 		} else {
+	// 			prevInt = i
+	// 		}
+	// 	}
+	//
+	// 	cpu.halt = true
+	// 	return nil
+	// },
 
 	"nop": func(cpu *CPU) error {
 		return nil

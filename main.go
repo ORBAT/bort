@@ -15,11 +15,13 @@ import (
 var verbose = flag.Bool("verbose", false, "Log spam")
 
 func main() {
-	if len(os.Args) == 1 {
+	flag.Parse()
+	if len(flag.Args()) == 0 {
 		panic("second argument must be comma-separated list of integers")
 	}
+
 	log.SetOutput(os.Stderr)
-	arg := os.Args[1]
+	arg := flag.Args()[0]
 	arg = strings.ReplaceAll(arg, " ", "")
 	numStrings := strings.Split(arg, ",")
 	nums := make([]int, 0, len(numStrings))
@@ -30,7 +32,7 @@ func main() {
 		}
 		nums = append(nums, n)
 	}
-	const popSz = 500
+	const popSz = 300
 	conf := &life.Conf{
 		CrossoverRatio:  0.90,
 		CrossoverMutP:   0.01,
@@ -40,6 +42,7 @@ func main() {
 		TournamentRatio: 2.0 / popSz,
 		ErrThreshold:    0.4,
 		MinEuclDist:     0.9,
+		Verbose:         *verbose,
 	}
 
 	p := life.NewPopulation(popSz, vm.MaxExecStackSize, life.NewRNG(0))

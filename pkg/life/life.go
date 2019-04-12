@@ -73,7 +73,7 @@ type Critter struct {
 }
 
 func (c Critter) String() string {
-	return fmt.Sprintf("<Critter %s Error=%.3f\n%s>", c.ID, c.Error, c.Genome.String())
+	return fmt.Sprintf("<Critter %s Error=%.3f Genome=\n%s>\n", c.ID, c.Error, c.Genome.String())
 }
 
 // Mutate a critter. xoverP gives the probability of crossover mutation, pointMutP for point
@@ -448,22 +448,26 @@ func (p *Population) DoYourThing(cfg *Conf, errorFn ErrorFunction, rng *rand.Ran
 		p.CalcErrors(errorFn)
 		st := p.Stats(cfg.ErrThreshold)
 
-		if generation%50 == 0 {
-			genBest := p.Best()
-			origInp := genBest.OrigInput()
-			want := make([]int, len(origInp))
-			copy(want, origInp)
-			sort.Ints(want)
-			log.Printf("gen %4d - avgErr %1.3f - err<%1.2f = %d - avgNSteps/inp %2.1f - genBest %s err %.3f.\norig: %v\ngot:  %v\nwant: %v\n<%s>\n",
-				generation, st.AvgErr, cfg.ErrThreshold, len(st.LowErr), st.AvgNSteps/float64(len(origInp)), genBest.ID, genBest.Error,
-				origInp, genBest.Int, want, genBest.String())
+		if cfg.Verbose {
+			if generation%100 == 0 {
+				genBest := p.Best()
+				origInp := genBest.OrigInput()
+				want := make([]int, len(origInp))
+				copy(want, origInp)
+				sort.Ints(want)
+				log.Printf("gen %4d - avgErr %1.3f - err<%1.2f = %d - avgNSteps/inp %2.1f - genBest %s err %.3f.\norig: %v\ngot:  %v\nwant: %v\n%s\n",
+					generation, st.AvgErr, cfg.ErrThreshold, len(st.LowErr), st.AvgNSteps/float64(len(origInp)), genBest.ID, genBest.Error,
+					origInp, genBest.Int, want, genBest.String())
+			}
 		}
 
 		if candidates := st.LowErr; len(candidates) != 0 {
 			for _, candidate := range candidates {
 				toSortErr := errorFn(candidate, toSort...)
 				if toSortErr < bestToSortErr {
-					log.Printf("gen %4d - best sort of your array so far (error %1.3f) :\norig: %v\nnow:  %v\nwant: %v\n%s", generation, toSortErr, toSort, candidate.Int, wantSorted, candidate.String())
+					if cfg.Verbose {
+						log.Printf("gen %4d - best sort of your array so far (error %1.3f) :\norig: %v\nnow:  %v\nwant: %v\n%s", generation, toSortErr, toSort, candidate.Int, wantSorted, candidate.String())
+					}
 					bestToSortErr = toSortErr
 					best = candidate
 					bestSort = candidate.Int
