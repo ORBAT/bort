@@ -378,29 +378,30 @@ func (p Population) Cross(rng *rand.Rand, cfg *Conf) Population {
 type Conf struct {
 	// The ratio of the population in a tournament, i.e. tournament size. The smaller this is, the
 	// likelier it is that less fit individuals will get to reproduce
-	TournamentRatio float64
+	TournamentRatio float64 `usage:"The ratio of the population in a tournament, i.e. tournament size. The smaller this is, the likelier it is that less fit individuals will get to reproduce. Might want to keep it low enough that only 1-2 critters will get selected"`
+
 	// The likelihood that the best individual in a tournament will win
-	TournamentP float64
+	TournamentP float64 `usage:"The likelihood that the best individual in a tournament will win"`
 
 	// Probability of crossover mutation
-	CrossoverMutP float64
+	CrossoverMutP float64 `usage:"Probability of crossover mutation"`
 	// Probability of one operation being mutated
-	PointMutP float64
+	PointMutP float64 `usage:"Probability of one operation being mutated"`
 	// Probability of transposition mutation
-	TransposeMutP float64
+	TransposeMutP float64 `usage:"Probability of transposition mutation"`
 
 	// Percentage of a new population that is generated with crossover mating (the rest are
 	// generated with mutation)
-	CrossoverRatio float64
+	CrossoverRatio float64 `usage:"Percentage of a new population that is generated with crossover mating (the rest are generated with mutation)"`
 
-	// ErrThreshold is the error under which the critter will try to sort toSort
-	ErrThreshold float64
+	// ErrThreshold is the error under which the critter will be used to try and solve the input problem
+	ErrThreshold float64 `usage:"the error under which the critter will be used to try and solve the input problem"`
 
 	// MinEuclDist is the smallest Euclidean distance to a partner that Select will allow (if at all
 	// possible)
-	MinEuclDist float64
+	MinEuclDist float64 `usage:"MinEuclDist is the smallest Euclidean distance to a partner that selection during reproduction will allow (if at all possible)"`
 
-	Verbose bool
+	Verbose bool `usage:"log spam"`
 }
 
 // MutationRatio is a convenience method for 1 - ps.CrossoverRatio
@@ -565,8 +566,8 @@ func SortErrorGen(minSize, maxSize int, ignoreStepErrs bool, rng *rand.Rand) Err
 			return 0
 		}
 		//  float64(levenshtein(outp, want)) / float64(max(outLen, inpLen))
-		// posDistance only works if len(want)==len(outp)
-		return posDistance(want, outp)
+		// positionalError only works if len(want)==len(outp)
+		return positionalError(want, outp)
 
 		// outLen := len(outp)
 		// if outLen != inpLen {
@@ -593,7 +594,7 @@ func genTestSlice(inpLen int, rng *rand.Rand) (inp []int, want []int) {
 	want = make([]int, inpLen)
 	copy(want, inp)
 	sort.Ints(want)
-	if posDistance(inp, want) < 0.5 {
+	if positionalError(inp, want) < 0.5 {
 		return genTestSlice(inpLen, rng)
 	}
 	return inp, want
@@ -648,7 +649,25 @@ func maxDist(len int) int {
 	return (len-1)*2 + maxDist(len-2)
 }
 
-func posDistance(want, got []int) float64 {
+// positionalError calculates how different "got" is from "want", assuming that "got" is a permutation of
+// "want" (i.e. has exactly the same elements, just in a different order.) It returns a value in the
+// range [0,1], so that a result of 0 means that "got" and "want" are identical (each element is shifted
+// by 0 positions), and 1 means that each element is as far away from its intended position as
+// possible.
+//
+// It does this by looking at each element in "got", and seeing how far it is from its wanted position.
+// As an example, if "want" is
+// 	[1 2 3 4]
+// and "got" is
+//  [4 3 2 1]
+// the "4" at index 0 is 3 positions away from its real place (as is the "1" at index 3), the "3" at
+// index 1 is 1 position away (and so is "2"). This slice is also the "most wrong" permutation of "want", as each element is in the wrong place.
+//
+// Now, this means that for a slice of length 4, the maximum sum of errors (i.e. the sum of how far
+// away each element is from the right spot) is always going to be at most 8; two elements can be 3
+// positions away, then the last two can be at most 1 away or in the right place (as there's only
+// two positions left for them to fill).
+func positionalError(want, got []int) float64 {
 	lenWant := len(want)
 	if lenWant != len(got) {
 		panic("this shit only works if want and got are the same length")
@@ -656,13 +675,15 @@ func posDistance(want, got []int) float64 {
 
 	errSum := 0.0
 
-	// 2: 1 2  <- max err 1*2 = 2
-	// 3: 1 2 3 <- max err 2*2 + 0 = 4 (furthest you can get is 2)
-	// 4: 1 2 3 4 <- max err 3*2 + 2 = 8
-	// 5: 1 2 3 4 5 <- 4*2 + 4 = 12
-	// 6: 1 2 3 4 5 6 <- 5*2 + 8 = 18
-	// 7: 1 2 3 4 5 6 7 <- 6*2 + 12 = 24
-	// 8: 1 2 3 4 5 6 7 8 <- 7*2 + 18 = 32
+	// max errors
+	// length 2: 1 2  <- max err 1*2 = 2, because if one element is in the wrong place, both are.
+	// length 3: 1 2 3 <- max err 2*2 = 4. Two elements can be at most 2 spots from the right place, and
+	//                    the last one has no choice
+	// length 4: 1 2 3 4 <- max err 3*2 + 2 = 8 (3*2 plus the max error of length 2)
+	// length 5: 1 2 3 4 5 <- 4*2 + 4 = 12 (4*2 plus max err of length 3)
+	// length 6: 1 2 3 4 5 6 <- 5*2 + 8 = 18
+	// length 7: 1 2 3 4 5 6 7 <- 6*2 + 12 = 24
+	// length 8: 1 2 3 4 5 6 7 8 <- 7*2 + 18 = 32
 
 	for wantIdx, wanted := range want {
 		abse := float64(idxOf(wanted, got) - wantIdx)
@@ -670,9 +691,7 @@ func posDistance(want, got []int) float64 {
 		errSum += math.Abs(abse)
 	}
 
-	maxE := float64(maxDist(lenWant))
-	// log.Println("sum",errSum, "max",maxE)
-	return errSum / maxE
+	return errSum / float64(maxDist(lenWant))
 }
 
 // based on https://github.com/agnivade/levenshtein/blob/master/levenshtein.go
