@@ -32,7 +32,7 @@ func main() {
 		}
 		nums = append(nums, n)
 	}
-	const popSz = 300
+	const popSz = 500
 	conf := &life.Conf{
 		CrossoverRatio:  0.90,
 		CrossoverMutP:   0.01,
@@ -47,6 +47,6 @@ func main() {
 
 	p := life.NewPopulation(popSz, vm.MaxExecStackSize, life.NewRNG(0))
 	errorFn := life.SortErrorGen(5, 25, true, life.NewRNG(0))
-	_, _, sortaSorted := p.DoYourThing(conf, errorFn, life.NewRNG(0), 1000, nums)
+	_, _, sortaSorted := p.DoYourThing(conf, errorFn, life.NewRNG(0), 2000, nums)
 	fmt.Printf("%v", sortaSorted)
 }
