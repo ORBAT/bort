@@ -4,10 +4,17 @@ Instead of writing a bad sorting algorithm myself, I figured I'd evolve one.
 
 ## What
 
-`bort` is a genetic programming system that generates individuals that sort integer lists, or try to
-at any rate. At its core is a stack-based virtual machine, and genomes (or "critters" in the source
-code) that are programs for that VM. Critters evolve by crossing over parts of their genetic code
-with others using tournament selection and preferring to mate with dissimilar individuals.
+`bort` is a genetic programming system that generates individuals that sort integer lists (or try to
+at any rate.) At its core is a stack-based virtual machine, and genomes (or "critters" in the source
+code) that are programs for  that VM.
+
+On a general level, the way `bort` works is that during each "generation", each individual program
+tries to sort a randomly generated array, and is then assigned a "fitness" value based on how close
+to being sorted the array is. In the next phase, most of the individuals "mate": partners are selected (with
+the most fit individuals being [more likely to be
+selected](https://en.wikipedia.org/wiki/Tournament_selection)) and then two offspring are [generated
+using the parents' code](https://en.wikipedia.org/wiki/Crossover_(genetic_algorithm). Each offspring
+also potentially undergoes mutations.
 
 ### CPU
 
