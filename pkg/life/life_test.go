@@ -4,11 +4,12 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/ORBAT/bort/pkg/config"
 	"github.com/ORBAT/bort/pkg/fucking"
 	"github.com/ORBAT/bort/pkg/vm"
 )
 
-var cfg = &Conf{
+var cfg = &config.Options{
 	TournamentRatio: 0,
 	TournamentP:     0,
 	CrossoverMutP:   1,
@@ -35,11 +36,11 @@ func TestMutate(t *testing.T) {
 }
 
 func TestPos(t *testing.T) {
-// orig: [99 5 6 1 4 -555 1 0]
-// 	now:  []
-// 	want: [-555 0 1 1 4 5 6 99]
-	gots := []int{-555,0,1,1,5,99,4,6}
-	want := []int{-555,0,1,1,4,5,6,99}
+	// orig: [99 5 6 1 4 -555 1 0]
+	// 	now:  []
+	// 	want: [-555 0 1 1 4 5 6 99]
+	gots := []int{-555, 0, 1, 1, 5, 99, 4, 6}
+	want := []int{-555, 0, 1, 1, 4, 5, 6, 99}
 	t.Log(positionalError(want, gots))
 }
 
@@ -81,8 +82,7 @@ func TestNondeter(t *testing.T) {
 	c.Input([]int{11, 10, 2, 0, 14}).Run(true)
 	out2 := fucking.IntSlice(c.Int)
 
-
 	if !reflect.DeepEqual(out1, out2) {
-		t.Fatalf("expected outputs to be identical, but they weren't:\n%+v\n%+v",out1,out2)
+		t.Fatalf("expected outputs to be identical, but they weren't:\n%+v\n%+v", out1, out2)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ORBAT/bort/pkg/config"
 	"github.com/ORBAT/bort/pkg/fucking"
 )
 
@@ -265,13 +266,14 @@ const (
 	ErrExecOverflow  = CPUError("Exec stack too large")
 )
 
-func NewCPU(exec []Op, maxExecSIze int) *CPU {
+func NewCPU(exec []Op, cfg config.CPU) *CPU {
 	return &CPU{
 		Stacks: Stacks{
 			Exec: fucking.InterfaceSlice(exec),
 		},
-		rom:              fucking.InterfaceSlice(exec),
-		MaxExecStackSize: maxExecSIze,
+		rom:       fucking.InterfaceSlice(exec),
+		maxExecSz: cfg.MaxExecStackSize,
+		maxStepsPerInp: cfg.MaxStepsPerInput,
 	}
 }
 
@@ -291,10 +293,12 @@ func (fn OpFn) Op(n string) Op {
 
 // CPU that executes Ops. The zero value is usable.
 type CPU struct {
+	// TODO: make input & output stack configurable
 	Stacks
-	NSteps           uint32
-	Err              error
-	MaxExecStackSize int
+	NSteps    uint32
+	Err       error
+	maxExecSz int
+	maxStepsPerInp float64
 
 	input  []int
 	rom    []interface{}
@@ -352,6 +356,7 @@ func (c CPU) Clone() *CPU {
 	return &c
 }
 
+// TODO: input stack selection
 func (c *CPU) Input(input []int) *CPU {
 	c.input = input
 	c.inpLen = len(input)
@@ -391,11 +396,11 @@ func (c *CPU) ExecString() string {
 }
 
 func (c *CPU) shouldStep() error {
-	if c.NSteps >= uint32(float64(c.inpLen)*MaxStepsPerInput) {
+	if c.NSteps >= uint32(float64(c.inpLen)*c.maxStepsPerInp) {
 		return ErrStepsExceeded
 	}
 
-	if c.Exec.Len() > c.MaxExecStackSize {
+	if c.Exec.Len() > c.maxExecSz {
 		return ErrExecOverflow
 	}
 	return nil
@@ -469,8 +474,8 @@ func y(cpu *CPU) error {
 	// include the topmost y in the clone, since the top of exec gets popped after each step anyhow
 	copy(clone, cpu.Exec)
 	cpu.Exec = append(cpu.Exec, clone...)
-	if cpu.Exec.Len() > cpu.MaxExecStackSize {
-		cpu.Exec = cpu.Exec[:cpu.MaxExecStackSize]
+	if cpu.Exec.Len() > cpu.maxExecSz {
+		cpu.Exec = cpu.Exec[:cpu.maxExecSz]
 	}
 	return nil
 }
@@ -680,7 +685,7 @@ var Ops = rawOpMap{
 	// 		return err
 	// 	}
 	// 	count := iiface.(int)
-	// 	if count+cpu.Exec.Len() > MaxExecStackSize {
+	// 	if count+cpu.Exec.Len() > maxExecSz {
 	// 		return CPUError("Exec stack would overflow from this repeat")
 	// 	}
 	// 	toRepeat := cpu.Exec[cpu.Exec.Len()-2]

@@ -9,12 +9,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ORBAT/bort/pkg/config"
 	"github.com/ORBAT/bort/pkg/flagon"
 	"github.com/ORBAT/bort/pkg/life"
 )
 
 func main() {
-	conf := &life.Conf{
+	conf := &config.Options{
 		CrossoverRatio:  0.90,
 		CrossoverMutP:   0.01,
 		PointMutP:       0.007,
@@ -26,7 +27,13 @@ func main() {
 		MaxGenerations:  1000,
 		PopSize:         500,
 		Verbose:         false,
-		MaxExecStackSize: 28,
+		MinTrainingArrayLen: 5,
+		MaxTrainingArrayLen: 25,
+		CPU: config.CPU{
+			MaxExecStackSize: 25,
+			MaxStepsPerInput: 10,
+			FatalErrors:      false,
+		},
 	}
 	flagon.Struct(conf)
 
@@ -56,11 +63,11 @@ func main() {
 	}
 
 	if conf.TournamentRatio == 0 {
-		conf.TournamentRatio = 2/float64(conf.PopSize)
+		conf.TournamentRatio = 2 / float64(conf.PopSize)
 	}
 
 	p := life.NewPopulation(conf, life.NewRNG(0))
-	errorFn := life.SortErrorGen(5, 25, true, life.NewRNG(0))
+	errorFn := life.SortErrorGen(life.NewRNG(0), conf)
 	_, _, sortaSorted := p.DoYourThing(conf, errorFn, life.NewRNG(0), nums)
 	fmt.Printf("%v", sortaSorted)
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ORBAT/bort/pkg/config"
 	"github.com/ORBAT/bort/pkg/fucking"
 	"github.com/ORBAT/bort/pkg/vm"
 )
@@ -82,7 +83,7 @@ func (c Critter) String() string {
 
 // Mutate a critter. xoverP gives the probability of crossover mutation, pointMutP for point
 // mutation and transposeMutP for transposition.
-func (c Critter) Mutate(rng *rand.Rand, cfg *Conf) Critter {
+func (c Critter) Mutate(rng *rand.Rand, cfg *config.Options) Critter {
 	if rng.Float64() < cfg.CrossoverMutP {
 		cg := CritterGenerator(cfg, rng)
 		return c.Cross(cg(), rng, cfg)
@@ -126,7 +127,7 @@ func (c Critter) crossPoints(randGen *rand.Rand) (a int, b int) {
 	return minMax(a, b)
 }
 
-func (c Critter) crossSimple(other Critter, rng *rand.Rand, cfg *Conf, tries int) (offspring Critter) {
+func (c Critter) crossSimple(other Critter, rng *rand.Rand, cfg *config.Options, tries int) (offspring Critter) {
 	if tries > 4 {
 		return c
 	}
@@ -156,7 +157,7 @@ func (c Critter) crossSimple(other Critter, rng *rand.Rand, cfg *Conf, tries int
 }
 
 // 3-way cross
-func (c Critter) cross(other Critter, randGen *rand.Rand, tries int, cfg *Conf) (offspring Critter) {
+func (c Critter) cross(other Critter, randGen *rand.Rand, tries int, cfg *config.Options) (offspring Critter) {
 	if tries > 4 {
 		return c
 	}
@@ -194,7 +195,7 @@ func (c Critter) cross(other Critter, randGen *rand.Rand, tries int, cfg *Conf) 
 //               ^         ^
 //     Offspring
 //     0 1 f g h i j 6 7 8 9
-func (c Critter) Cross(other Critter, rng *rand.Rand, cfg *Conf) (offspring Critter) {
+func (c Critter) Cross(other Critter, rng *rand.Rand, cfg *config.Options) (offspring Critter) {
 	offspring = c.cross(other, rng, 0, cfg)
 	if len(offspring.Genome) > cfg.MaxExecStackSize {
 		offspring.Genome = offspring.Genome[:cfg.MaxExecStackSize]
@@ -204,7 +205,7 @@ func (c Critter) Cross(other Critter, rng *rand.Rand, cfg *Conf) (offspring Crit
 
 type CritterGen func() Critter
 
-func CritterGenerator(cfg *Conf, rng *rand.Rand) CritterGen {
+func CritterGenerator(cfg *config.Options, rng *rand.Rand) CritterGen {
 	opGen := OpGenerator(rng)
 	return func() Critter {
 		nOps := 0
@@ -219,8 +220,8 @@ func CritterGenerator(cfg *Conf, rng *rand.Rand) CritterGen {
 	}
 }
 
-func NewCritter(ops []vm.Op, cfg *Conf) Critter {
-	return Critter{ops, vm.NewCPU(ops, cfg.MaxExecStackSize), MaxError, fmt.Sprintf("%p", &ops)}
+func NewCritter(ops []vm.Op, cfg *config.Options) Critter {
+	return Critter{ops, vm.NewCPU(ops, cfg.CPU), MaxError, fmt.Sprintf("%p", &ops)}
 }
 
 type Population []Critter
@@ -266,7 +267,7 @@ func (p *Population) Delete(idx int) {
 	*p = (pp)[:last]
 }
 
-func (p Population) SelectFar(rng *rand.Rand, cfg *Conf, orig Critter) (other Critter, indexInP int) {
+func (p Population) SelectFar(rng *rand.Rand, cfg *config.Options, orig Critter) (other Critter, indexInP int) {
 	origv := orig.ToVector()
 	maxDist := 0.0
 	var furthest Critter
@@ -297,7 +298,7 @@ func (p Population) SelectFar(rng *rand.Rand, cfg *Conf, orig Critter) (other Cr
 // tournamentP = 1 always returns the best individual of the tournament, and a really small
 // tournamentRatio (so only eg. 1 individual ends up in the tournament) will make selection
 // effectively random
-func (p Population) Select(rng *rand.Rand, cfg *Conf) (cr Critter, indexInP int) {
+func (p Population) Select(rng *rand.Rand, cfg *config.Options) (cr Critter, indexInP int) {
 	popSize := len(p)
 
 	tournSize := int(float64(popSize) * cfg.TournamentRatio)
@@ -343,8 +344,8 @@ func isIn(ints []int, i int) bool {
 }
 
 // Mutate a part of the population, and return a new population with only mutated critters + the best of p
-func (p Population) Mutate(rng *rand.Rand, cfg *Conf) Population {
-	nToMutate := cfg.NToMutate(p)
+func (p Population) Mutate(rng *rand.Rand, cfg *config.Options) Population {
+	nToMutate := cfg.NToMutate(len(p))
 	newP := make(Population, nToMutate-1, nToMutate)
 	picked := make([]int, 0, nToMutate)
 	for i := range newP {
@@ -362,8 +363,8 @@ func (p Population) Mutate(rng *rand.Rand, cfg *Conf) Population {
 }
 
 // Cross over a part of the population, and return a population with descendants only
-func (p Population) Cross(rng *rand.Rand, cfg *Conf) Population {
-	newP := make(Population, cfg.NToCrossover(p))
+func (p Population) Cross(rng *rand.Rand, cfg *config.Options) Population {
+	newP := make(Population, cfg.NToCrossover(len(p)))
 	for i := range newP {
 		var (
 			critter1, critter2 Critter
@@ -377,59 +378,6 @@ func (p Population) Cross(rng *rand.Rand, cfg *Conf) Population {
 		newP[i] = critter1.Cross(critter2, rng, cfg)
 	}
 	return newP
-}
-
-type Conf struct {
-	// The ratio of the population in a tournament, i.e. tournament size. The smaller this is, the
-	// likelier it is that less fit individuals will get to reproduce
-	TournamentRatio float64 `usage:"The ratio of the population in a tournament, i.e. tournament size. The smaller this is, the likelier it is that less fit individuals will get to reproduce. Pass 0 to default to a fraction of the population that gives 2 tournament participants"`
-
-	// The likelihood that the best individual in a tournament will win
-	TournamentP float64 `usage:"The likelihood that the best individual in a tournament will win"`
-
-	// Probability of crossover mutation
-	CrossoverMutP float64 `usage:"Probability of crossover mutation"`
-	// Probability of one operation being mutated
-	PointMutP float64 `usage:"Probability of one operation being mutated"`
-	// Probability of transposition mutation
-	TransposeMutP float64 `usage:"Probability of transposition mutation"`
-
-	// Percentage of a new population that is generated with crossover mating (the rest are
-	// generated with mutation)
-	CrossoverRatio float64 `usage:"Percentage of a new population that is generated with crossover mating (the rest are generated with mutation)"`
-
-	// ErrThreshold is the error under which the critter will be used to try and solve the input problem
-	ErrThreshold float64 `usage:"the error under which the critter will be used to try and solve the input problem"`
-
-	// MinEuclDist is the smallest Euclidean distance to a partner that Select will allow (if at all
-	// possible)
-	MinEuclDist float64 `usage:"the smallest Euclidean distance to a partner that selection during reproduction will allow (if at all possible)"`
-
-	MaxExecStackSize int `usage:"the maximum size of the exec stack"`
-
-	// MaxGenerations is the maximum number of generations to run
-	MaxGenerations int `usage:"the maximum number of generations to run"`
-
-	MaxStepsPerInput int `usage:"governs how many steps per each input item each individual can run. For example, for an input of length 5 and MaxStepsPerInput of 4, each individual would have a total of 20 steps to do its thing"`
-
-	PopSize int `usage:"Population size"`
-
-	Verbose bool `usage:"log spam"`
-}
-
-// MutationRatio is a convenience method for 1 - ps.CrossoverRatio
-func (cfg *Conf) MutationRatio() float64 {
-	return 1 - cfg.CrossoverRatio
-}
-
-// NToMutate returns the number of individuals to mutate in p
-func (cfg *Conf) NToMutate(p Population) int {
-	return int(math.Floor(cfg.MutationRatio() * float64(len(p))))
-}
-
-// NToCrossover returns the number of individuals to cross over in p
-func (cfg *Conf) NToCrossover(p Population) int {
-	return int(math.Ceil(cfg.CrossoverRatio * float64(len(p))))
 }
 
 type Stats struct {
@@ -452,7 +400,7 @@ func (p *Population) Stats(errThreshold float64) Stats {
 	return Stats{errSum / popSize, nStepSum / popSize, lowErr}
 }
 
-func (p *Population) DoYourThing(cfg *Conf, errorFn ErrorFunction, rng *rand.Rand, toSort []int) (pop Population, best Critter, bestSort []interface{}) {
+func (p *Population) DoYourThing(cfg *config.Options, errorFn ErrorFunction, rng *rand.Rand, toSort []int) (pop Population, best Critter, bestSort []interface{}) {
 	generation := 0
 	bestToSortErr := MaxError
 	wantSorted := make([]int, len(toSort))
@@ -511,7 +459,7 @@ func OpGenerator(rng *rand.Rand) func() vm.Op {
 	}
 }
 
-func NewPopulation(cfg *Conf, rng *rand.Rand) Population {
+func NewPopulation(cfg *config.Options, rng *rand.Rand) Population {
 	cg := CritterGenerator(cfg, rng)
 	p := make(Population, cfg.PopSize)
 	for i := range p {
@@ -546,9 +494,12 @@ func isSame(a, b []int) bool {
 	return true
 }
 
-func SortErrorGen(minSize, maxSize int, ignoreStepErrs bool, rng *rand.Rand) ErrorFunction {
+func SortErrorGen(rng *rand.Rand, cfg *config.Options) ErrorFunction {
+	fatalErrs := cfg.FatalErrors
+	minLen := cfg.MinTrainingArrayLen
+	sizeRange := 1 + (cfg.MaxTrainingArrayLen - minLen)
 	return func(c Critter, input ...int) float64 {
-		inpLen := rng.Intn(1+(maxSize-minSize)) + minSize
+		inpLen := rng.Intn(sizeRange) + minLen
 		var inp, want []int
 		if len(input) == 0 {
 			inp, want = genTestSlice(inpLen, rng)
@@ -559,7 +510,7 @@ func SortErrorGen(minSize, maxSize int, ignoreStepErrs bool, rng *rand.Rand) Err
 			sort.Ints(want)
 		}
 
-		_, err := c.Input(inp).Run(ignoreStepErrs)
+		_, err := c.Input(inp).Run(fatalErrs)
 		if err != nil {
 			return MaxError
 		}
@@ -676,7 +627,8 @@ func maxDist(len int) float64 {
 // and "got" is
 //  [4 3 2 1]
 // the "4" at index 0 is 3 positions away from its real place (as is the "1" at index 3), the "3" at
-// index 1 is 1 position away (and so is "2"). This slice is also the "most wrong" permutation of "want", as each element is in the wrong place.
+// index 1 is 1 position away (and so is "2"). This slice is also the "most wrong" permutation of
+// "want", as each element is in the wrong place.
 //
 // Now, this means that for a slice of length 4, the maximum sum of errors (i.e. the sum of how far
 // away each element is from the right spot) is always going to be at most 8; two elements can be 3
@@ -699,7 +651,6 @@ func positionalError(want, got []int) float64 {
 	// length 6: 1 2 3 4 5 6 <- 5*2 + 8 = 18
 	// length 7: 1 2 3 4 5 6 7 <- 6*2 + 12 = 24
 	// length 8: 1 2 3 4 5 6 7 8 <- 7*2 + 18 = 32
-
 
 	for wantIdx := 0; wantIdx < lenWant; wantIdx++ {
 		errSum += math.Abs(float64(closestIdx(want[wantIdx], wantIdx, got) - wantIdx))
