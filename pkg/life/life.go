@@ -5,8 +5,11 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ORBAT/bort/pkg/config"
@@ -86,7 +89,8 @@ func (c Critter) String() string {
 func (c Critter) Mutate(rng *rand.Rand, cfg *config.Options) Critter {
 	if rng.Float64() < cfg.CrossoverMutP {
 		cg := CritterGenerator(cfg, rng)
-		return c.Cross(cg(), rng, cfg)
+		crossed, _ := c.Cross(rng, cg(), cfg)
+		return crossed
 	}
 	opGen := OpGenerator(rng)
 	genomeLen := len(c.Genome)
@@ -118,49 +122,32 @@ func minMax(a, b int) (min, max int) {
 // crossPoints returns two points that can be used to slice
 // gs, so that a is less than and not equal to b, and b < len(gs)
 func (c Critter) crossPoints(randGen *rand.Rand) (a int, b int) {
-	lgs := len(c.Genome)
-	a = randGen.Intn(lgs)
-	b = randGen.Intn(lgs)
+	leng := len(c.Genome)
+	a = randGen.Intn(leng)
+	b = randGen.Intn(leng)
 	if a == b {
 		return c.crossPoints(randGen)
 	}
 	return minMax(a, b)
 }
 
-func (c Critter) crossSimple(other Critter, rng *rand.Rand, cfg *config.Options, tries int) (offspring Critter) {
-	if tries > 4 {
-		return c
-	}
-	var a, b Critter
-	if rng.Intn(2) == 1 {
-		a, b = c, other
-	} else {
-		a, b = other, c
-	}
-	alen := len(a.Genome)
-	blen := len(b.Genome)
+// toPieces  for a genome with len 6, and minPoint=2, maxPoint=5
+// a b c d e f
+//   ^     ^
+// returns [a, b], [c, d, e], [f]
+func (c Critter) toPieces(minPoint, maxPoint int) []Genome {
+	g := c.Genome
+	return []Genome{g[0:minPoint], g[minPoint:maxPoint], g[maxPoint:]}
+}
 
-	ap := rng.Intn(alen)
-	bp := rng.Intn(blen)
-	offsgen := make([]vm.Op, 0, (alen-ap)+(blen-bp))
-	offsgen = append(offsgen, a.Genome[:ap]...)
-	offsgen = append(offsgen, b.Genome[bp:]...)
-	if len(offsgen) < 3 || len(offsgen) > cfg.MaxExecStackSize {
-		return c.crossSimple(other, rng, cfg, tries+1)
-	}
-	return NewCritter(offsgen, cfg)
-	// alen 5, ap 2
-	// a: aa bb cc dd ee
-	// [aa bb]
-	// blen 3, bp 1
-	// b: ff gg hh
+func tooLong(aMin, aMax, aLen, bMin, bMax, bLen, maxLen int) (bool) {
+	off1l := aMin + (bMax - bMin) + (aLen - aMax)
+	off2l := bMin + (aMax - aMin) + (bLen - bMax)
+	return off1l > maxLen || off2l > maxLen
 }
 
 // 3-way cross
-func (c Critter) cross(other Critter, randGen *rand.Rand, tries int, cfg *config.Options) (offspring Critter) {
-	if tries > 4 {
-		return c
-	}
+func (c Critter) cross(other Critter, randGen *rand.Rand, tries int, cfg *config.Options) (offspring1, offspring2 Critter) {
 	var a, b Critter
 	if randGen.Intn(2) == 1 {
 		a, b = c, other
@@ -168,21 +155,37 @@ func (c Critter) cross(other Critter, randGen *rand.Rand, tries int, cfg *config
 		a, b = other, c
 	}
 
-	alen := len(a.Genome)
+	aLen := len(a.Genome)
+	bLen := len(a.Genome)
 
 	aMinPt, aMaxPt := a.crossPoints(randGen)
 	bMinPt, bMaxPt := b.crossPoints(randGen)
-
-	// this length calculation is probably bullshit but meh
-	offspringGenome := make([]vm.Op, 0, aMinPt+(bMaxPt-bMinPt)+(alen-aMaxPt))
-	offspringGenome = append(offspringGenome, a.Genome[:aMinPt+1]...)
-	offspringGenome = append(offspringGenome, b.Genome[bMinPt:bMaxPt+1]...)
-	offspringGenome = append(offspringGenome, a.Genome[aMaxPt:]...)
-
-	if offl := len(offspringGenome); offl < 2 || offl > cfg.MaxExecStackSize {
-		return c.cross(other, randGen, tries+1, cfg)
+	maxExecSz := cfg.MaxExecStackSize
+	for tries := 0; tooLong(aMinPt, aMaxPt, aLen, bMinPt, bMaxPt, bLen, maxExecSz) && tries < 6; tries++ {
+		aMinPt, aMaxPt = a.crossPoints(randGen)
+		bMinPt, bMaxPt = b.crossPoints(randGen)
 	}
-	return NewCritter(offspringGenome, cfg).Mutate(randGen, cfg)
+
+	aPieces := a.toPieces(aMinPt, aMaxPt)
+	bPieces := b.toPieces(bMinPt, bMaxPt)
+
+	offs1Piece1, offs1Piece2, offs1Piece3 := aPieces[0], bPieces[1], aPieces[2]
+	offs2Piece1, offs2Piece2, offs2Piece3 := bPieces[0], aPieces[1], bPieces[2]
+
+	offs1Genome := make(Genome, 0, len(offs1Piece1)+len(offs1Piece2)+len(offs1Piece3))
+	offs1Genome = append(append(append(offs1Genome, aPieces[0]...), bPieces[1]...), aPieces[2]...)
+	offs2Genome := make(Genome, 0, len(offs2Piece1)+len(offs2Piece2)+len(offs2Piece3))
+	offs2Genome = append(append(append(offs2Genome, bPieces[0]...), aPieces[1]...), bPieces[2]...)
+
+	return NewCritter(cutDown(offs1Genome, maxExecSz), cfg),
+		NewCritter(cutDown(offs2Genome, maxExecSz), cfg)
+}
+
+func cutDown(g Genome, maxLen int) Genome {
+	if len(g) < maxLen {
+		return g
+	}
+	return g[:maxLen]
 }
 
 // Cross crosses c with other using two crossover points, producing one offspring genome.
@@ -195,12 +198,8 @@ func (c Critter) cross(other Critter, randGen *rand.Rand, tries int, cfg *config
 //               ^         ^
 //     Offspring
 //     0 1 f g h i j 6 7 8 9
-func (c Critter) Cross(other Critter, rng *rand.Rand, cfg *config.Options) (offspring Critter) {
-	offspring = c.cross(other, rng, 0, cfg)
-	if len(offspring.Genome) > cfg.MaxExecStackSize {
-		offspring.Genome = offspring.Genome[:cfg.MaxExecStackSize]
-	}
-	return offspring
+func (c Critter) Cross(rng *rand.Rand, other Critter, cfg *config.Options) (offspring1, offspring2 Critter) {
+	return c.cross(other, rng, 0, cfg)
 }
 
 type CritterGen func() Critter
@@ -220,7 +219,7 @@ func CritterGenerator(cfg *config.Options, rng *rand.Rand) CritterGen {
 	}
 }
 
-func NewCritter(ops []vm.Op, cfg *config.Options) Critter {
+func NewCritter(ops Genome, cfg *config.Options) Critter {
 	return Critter{ops, vm.NewCPU(ops, cfg.CPU), MaxError, fmt.Sprintf("%p", &ops)}
 }
 
@@ -240,11 +239,24 @@ func (p Population) Swap(i, j int) {
 
 type ErrorFunction func(c Critter, input ...int) float64
 
-func (p Population) CalcErrors(errorFn ErrorFunction) Population {
+func calcErrWorker(p Population, errorFn ErrorFunction, wg *sync.WaitGroup) {
 	for i, critter := range p {
 		critter.Error = errorFn(critter)
 		p[i] = critter
 	}
+	wg.Done()
+}
+
+func (p Population) CalcErrors(errorFn ErrorFunction) Population {
+	batchSize := len(p) / runtime.NumCPU()
+	var wg sync.WaitGroup
+	for batchSize < len(p) {
+		var batch Population
+		p, batch = p[batchSize:], p[0:batchSize:batchSize]
+		wg.Add(1)
+		go calcErrWorker(batch, errorFn, &wg)
+	}
+	wg.Wait()
 	return p
 }
 
@@ -345,39 +357,38 @@ func isIn(ints []int, i int) bool {
 
 // Mutate a part of the population, and return a new population with only mutated critters + the best of p
 func (p Population) Mutate(rng *rand.Rand, cfg *config.Options) Population {
-	nToMutate := cfg.NToMutate(len(p))
-	newP := make(Population, nToMutate-1, nToMutate)
+	nToMutate := cfg.NToMutate()
 	picked := make([]int, 0, nToMutate)
-	for i := range newP {
+
+	for i := 0; i < nToMutate; i++ {
 		critter, idx := p.SelectRandom(rng)
 		for isIn(picked, idx) {
 			critter, idx = p.SelectRandom(rng)
 		}
 		picked = append(picked, idx)
-		newP[i] = critter.Mutate(rng, cfg)
+		p[i] = critter.Mutate(rng, cfg)
 	}
 
-	// elite selection
-	newP = append(newP, p.Best())
-	return newP
+	return p
 }
 
-// Cross over a part of the population, and return a population with descendants only
+// Cross two individuals and replace two random individuals with the offspring
 func (p Population) Cross(rng *rand.Rand, cfg *config.Options) Population {
-	newP := make(Population, cfg.NToCrossover(len(p)))
-	for i := range newP {
-		var (
-			critter1, critter2 Critter
-			idx1, idx2         int
-		)
-		for idx1 == idx2 {
-			critter1, idx1 = p.Select(rng, cfg)
-			// critter2, idx2 = p.Select(rng, cfg)
-			critter2, idx2 = p.SelectFar(rng, cfg, critter1)
-		}
-		newP[i] = critter1.Cross(critter2, rng, cfg)
+	var (
+		critter1, critter2 Critter
+		idx1, idx2         int
+	)
+	for idx1 == idx2 {
+		critter1, idx1 = p.Select(rng, cfg)
+		// critter2, idx2 = p.Select(rng, cfg)
+		critter2, idx2 = p.SelectFar(rng, cfg, critter1)
 	}
-	return newP
+	off1, off2 := critter1.Cross(rng, critter2, cfg)
+
+	_, killIdx1 := p.SelectRandom(rng)
+	_, killIdx2 := p.SelectRandom(rng)
+	p[killIdx1], p[killIdx2] = off1.Mutate(rng, cfg), off2.Mutate(rng, cfg)
+	return p
 }
 
 type Stats struct {
@@ -400,14 +411,24 @@ func (p *Population) Stats(errThreshold float64) Stats {
 	return Stats{errSum / popSize, nStepSum / popSize, lowErr}
 }
 
-func (p *Population) DoYourThing(cfg *config.Options, errorFn ErrorFunction, rng *rand.Rand, toSort []int) (pop Population, best Critter, bestSort []interface{}) {
+func timer() func() time.Duration {
+	start := time.Now()
+	return func() time.Duration {
+		return time.Now().Sub(start)
+	}
+}
+
+func (p Population) DoYourThing(cfg *config.Options, errorFn ErrorFunction, rng *rand.Rand, toSort []int) (pop Population, best Critter, bestSort []interface{}) {
 	generation := 0
 	bestToSortErr := MaxError
 	wantSorted := make([]int, len(toSort))
 	copy(wantSorted, toSort)
 	sort.Ints(wantSorted)
+	var crossMutTime time.Duration
 	for ; generation < cfg.MaxGenerations; generation++ {
+		stopErrTimer := timer()
 		p.CalcErrors(errorFn)
+		errTimePer := time.Duration(int64(stopErrTimer()) / int64(len(p)))
 		st := p.Stats(cfg.ErrThreshold)
 
 		if cfg.Verbose {
@@ -417,8 +438,8 @@ func (p *Population) DoYourThing(cfg *config.Options, errorFn ErrorFunction, rng
 				want := make([]int, len(origInp))
 				copy(want, origInp)
 				sort.Ints(want)
-				log.Printf("gen %4d - avgErr %1.3f - err<%1.2f = %d - avgNSteps/inp %2.1f - genBest %s err %.3f.\norig: %v\ngot:  %v\nwant: %v\n%s\n",
-					generation, st.AvgErr, cfg.ErrThreshold, len(st.LowErr), st.AvgNSteps/float64(len(origInp)), genBest.ID, genBest.Error,
+				log.Printf("gen %4d - avgErr %1.3f - err<%1.2f = %d - avgNSteps/inp %2.1f - err calc %s / crit - cross/mut time %s\n genBest %s err %.3f.\norig: %v\ngot:  %v\nwant: %v\n%s\n",
+					generation, st.AvgErr, cfg.ErrThreshold, len(st.LowErr), st.AvgNSteps/float64(len(origInp)), errTimePer, crossMutTime, genBest.ID, genBest.Error,
 					origInp, genBest.Int, want, genBest.String())
 			}
 		}
@@ -441,12 +462,15 @@ func (p *Population) DoYourThing(cfg *config.Options, errorFn ErrorFunction, rng
 			}
 		}
 
-		newPop := p.Mutate(rng, cfg)
-		newPop = append(newPop, p.Cross(rng, cfg)...)
-		*p = newPop
+		stopCrossMutT := timer()
+		p.Cross(rng, cfg)
+		if cfg.GlobalMutation {
+			p.Mutate(rng, cfg)
+		}
+		crossMutTime = time.Duration(int64(stopCrossMutT()) / int64(len(p)))
 	}
 otog:
-	return *p, best, bestSort
+	return p, best, bestSort
 }
 
 func NewRNG(seed int64) *rand.Rand {
@@ -494,11 +518,12 @@ func isSame(a, b []int) bool {
 	return true
 }
 
-func SortErrorGen(rng *rand.Rand, cfg *config.Options) ErrorFunction {
+func SortErrorGen(seed int64, cfg *config.Options) ErrorFunction {
 	fatalErrs := cfg.FatalErrors
 	minLen := cfg.MinTrainingArrayLen
 	sizeRange := 1 + (cfg.MaxTrainingArrayLen - minLen)
 	return func(c Critter, input ...int) float64 {
+		rng := rand.New(rand.NewSource(maybeUnixNano(seed)))
 		inpLen := rng.Intn(sizeRange) + minLen
 		var inp, want []int
 		if len(input) == 0 {
@@ -637,7 +662,7 @@ func maxDist(len int) float64 {
 func positionalError(want, got []int) float64 {
 	lenWant := len(want)
 	if lenWant != len(got) {
-		panic("this shit only works if want and got are the same length")
+		panic("this shit only works if want and got are the same length, now they're " + strconv.Itoa(lenWant) + " and " + strconv.Itoa(len(got)))
 	}
 
 	errSum := 0.0

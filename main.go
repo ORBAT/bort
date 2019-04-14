@@ -16,22 +16,23 @@ import (
 
 func main() {
 	conf := &config.Options{
-		CrossoverRatio:  0.90,
-		CrossoverMutP:   0.01,
-		PointMutP:       0.007,
-		TransposeMutP:   0.007,
-		TournamentP:     0.65,
-		TournamentRatio: 0.0,
-		ErrThreshold:    0.4,
-		MinEuclDist:     0.9,
-		MaxGenerations:  1000,
-		PopSize:         500,
-		Verbose:         false,
-		MinTrainingArrayLen: 5,
-		MaxTrainingArrayLen: 25,
+		MutationRatio:       0.01,
+		CrossoverMutP:       0.001,
+		PointMutP:           0.008,
+		TransposeMutP:       0.008,
+		TournamentP:         0.65,
+		TournamentRatio:     0.0,
+		ErrThreshold:        0.2,
+		MinEuclDist:         0.7,
+		MaxGenerations:      4000,
+		PopSize:             500,
+		Verbose:             false,
+		MinTrainingArrayLen: 10,
+		MaxTrainingArrayLen: 15,
+		GlobalMutation:      true,
 		CPU: config.CPU{
-			MaxExecStackSize: 25,
-			MaxStepsPerInput: 10,
+			MaxExecStackSize: 15,
+			MaxStepsPerInput: 8,
 			FatalErrors:      false,
 		},
 	}
@@ -63,11 +64,11 @@ func main() {
 	}
 
 	if conf.TournamentRatio == 0 {
-		conf.TournamentRatio = 2 / float64(conf.PopSize)
+		conf.TournamentRatio = 7 / float64(conf.PopSize)
 	}
 
 	p := life.NewPopulation(conf, life.NewRNG(0))
-	errorFn := life.SortErrorGen(life.NewRNG(0), conf)
+	errorFn := life.SortErrorGen(0, conf)
 	_, _, sortaSorted := p.DoYourThing(conf, errorFn, life.NewRNG(0), nums)
 	fmt.Printf("%v", sortaSorted)
 }

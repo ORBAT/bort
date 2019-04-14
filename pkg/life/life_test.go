@@ -27,7 +27,7 @@ func TestCross(t *testing.T) {
 	// cg := CritterGenerator(20, time.Now().UnixNano())
 	cr1 := NewCritter([]vm.Op{vm.Ops["y"], vm.Ops["rot3"], vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"]}, cfg)
 	cr2 := NewCritter([]vm.Op{vm.Ops["not"], vm.Ops["and"], vm.Ops["not"], vm.Ops["and"], vm.Ops["not"], vm.Ops["and"], vm.Ops["not"], vm.Ops["and"], vm.Ops["not"], vm.Ops["and"], vm.Ops["not"], vm.Ops["and"]}, cfg)
-	offs := cr1.Cross(cr2, NewRNG(1), cfg)
+	offs,_ := cr1.Cross(NewRNG(1), cr2, cfg)
 	t.Log("cr1", cr1.ExecString())
 	t.Log("cr2", cr2.ExecString())
 	t.Log("offs", offs.ExecString())
