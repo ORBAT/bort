@@ -17,11 +17,15 @@ var cfg = &config.Options{
 	TransposeMutP:   0,
 	CrossoverRatio:  0,
 	ErrThreshold:    0,
+	CPU: config.CPU{
+		MaxExecStackSize: 25,
+		MaxStepsPerInput: 5,
+	},
 }
 
 func TestCross(t *testing.T) {
 	// cg := CritterGenerator(20, time.Now().UnixNano())
-	cr1 := NewCritter([]vm.Op{vm.Ops["rot"], vm.Ops["rot3"], vm.Ops["rot"], vm.Ops["rot3"], vm.Ops["rot"], vm.Ops["rot3"], vm.Ops["rot"], vm.Ops["rot3"], vm.Ops["rot"], vm.Ops["rot3"], vm.Ops["rot"], vm.Ops["rot3"]}, cfg)
+	cr1 := NewCritter([]vm.Op{vm.Ops["y"], vm.Ops["rot3"], vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"]}, cfg)
 	cr2 := NewCritter([]vm.Op{vm.Ops["not"], vm.Ops["and"], vm.Ops["not"], vm.Ops["and"], vm.Ops["not"], vm.Ops["and"], vm.Ops["not"], vm.Ops["and"], vm.Ops["not"], vm.Ops["and"], vm.Ops["not"], vm.Ops["and"]}, cfg)
 	offs := cr1.Cross(cr2, NewRNG(1), cfg)
 	t.Log("cr1", cr1.ExecString())
@@ -30,7 +34,7 @@ func TestCross(t *testing.T) {
 }
 
 func TestMutate(t *testing.T) {
-	cr1 := NewCritter([]vm.Op{vm.Ops["rot"], vm.Ops["rot3"], vm.Ops["rot"], vm.Ops["rot3"], vm.Ops["rot"], vm.Ops["rot3"], vm.Ops["rot"], vm.Ops["rot3"], vm.Ops["rot"], vm.Ops["rot3"], vm.Ops["rot"], vm.Ops["rot3"]}, cfg)
+	cr1 := NewCritter([]vm.Op{vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"]}, cfg)
 	crm := cr1.Mutate(NewRNG(3), cfg)
 	t.Log(crm.String())
 }

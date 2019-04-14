@@ -1,23 +1,24 @@
 package vm
 
 import (
-	"fmt"
 	"testing"
 )
 
 func TestY(t *testing.T) {
 	ifErr := fatalIfErr(t)
 	var cpu CPU
+	cpu.maxExecSz = 20
+	cpu.maxStepsPerInp = 5
 	cpu.Exec.Push(Ops["not"])
-	cpu.Exec.Push(Ops["rot"])
+	cpu.Exec.Push(Ops["if"])
 	cpu.Exec.Push(Ops["y"])
 	_, err := cpu.Step()
 	ifErr(err, "stepping cpu")
 	exp := `not
-rot
+if
 y
 not
-rot
+if
 `
 	if got := cpu.ExecString(); got != exp {
 		t.Errorf("expected:\n%s\ngot:\n%s", exp, got)
@@ -26,7 +27,7 @@ rot
 
 func TestIf(t *testing.T) {
 	not := Ops["not"]
-	rot := Ops["rot"]
+	y := Ops["y"]
 	ifi := Ops["if"]
 
 	// the syntax is
@@ -42,8 +43,10 @@ func TestIf(t *testing.T) {
 		ifErr := fatalIfErr(t)
 
 		var cpu CPU
+		cpu.maxExecSz = 20
+		cpu.maxStepsPerInp = 5
 		cpu.Exec.Push(not)
-		cpu.Exec.Push(rot)
+		cpu.Exec.Push(y)
 		cpu.Exec.Push(ifi)
 
 		cpu.Bool.Push(false)
@@ -61,15 +64,17 @@ func TestIf(t *testing.T) {
 		ifErr := fatalIfErr(t)
 
 		var cpu CPU
+		cpu.maxExecSz = 20
+		cpu.maxStepsPerInp = 5
 		cpu.Exec.Push(not)
-		cpu.Exec.Push(rot)
+		cpu.Exec.Push(y)
 		cpu.Exec.Push(ifi)
 
 		cpu.Bool.Push(true)
 
 		_, err := cpu.Step()
 		ifErr(err, "stepping cpu")
-		exp := `rot
+		exp := `y
 `
 		if got := cpu.ExecString(); got != exp {
 			t.Errorf("expected:\n%s\ngot:\n%s", exp, got)
@@ -78,45 +83,6 @@ func TestIf(t *testing.T) {
 	})
 }
 
-func TestRot3(t *testing.T) {
-	ifErr := fatalIfErr(t)
-	rot3 := Ops["rot3"]
-	var cpu CPU
-	cpu.Exec.Push(rot3)
-	cpu.Int.Push(1)
-	cpu.Int.Push(2)
-	cpu.Int.Push(3)
-	cpu.Int.Push(4)
-
-	_, err := cpu.Step()
-	ifErr(err, "stepping cpu")
-	exp := fmt.Sprintf("%v", []int{1, 3, 4, 2})
-	got := fmt.Sprintf("%v", cpu.Int)
-	if exp != got {
-		t.Errorf("expected %s, got %s", exp, got)
-	}
-
-}
-
-func TestRot(t *testing.T) {
-	ifErr := fatalIfErr(t)
-	rot := Ops["rot"]
-	var cpu CPU
-	cpu.Exec.Push(rot)
-	cpu.Int.Push(1)
-	cpu.Int.Push(2)
-	cpu.Int.Push(3)
-	cpu.Int.Push(4)
-
-	_, err := cpu.Step()
-	ifErr(err, "stepping cpu")
-	exp := fmt.Sprintf("%v", []int{4, 1, 2, 3})
-	got := fmt.Sprintf("%v", cpu.Int)
-	if exp != got {
-		t.Errorf("expected %s, got %s", exp, got)
-	}
-
-}
 
 func fatalIfErr(t *testing.T) func(err error, what string) {
 	return func(err error, what string) {

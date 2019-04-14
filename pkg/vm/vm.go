@@ -424,7 +424,7 @@ func (c *CPU) Step() (execDone bool, err error) {
 	return c.halt, err
 }
 
-func (c *CPU) Run(ignoreStepErrs bool) (completed bool, err error) {
+func (c *CPU) Run(fatalErrs bool) (completed bool, err error) {
 	defer func() {
 		if err != nil {
 			c.Err = err
@@ -432,7 +432,7 @@ func (c *CPU) Run(ignoreStepErrs bool) (completed bool, err error) {
 	}()
 	for {
 		if err := c.shouldStep(); err != nil {
-			if ignoreStepErrs == true {
+			if !fatalErrs {
 				err = nil
 			}
 			return false, err
@@ -442,7 +442,7 @@ func (c *CPU) Run(ignoreStepErrs bool) (completed bool, err error) {
 		if done {
 			return true, nil
 		}
-		if err != nil && !ignoreStepErrs {
+		if err != nil && fatalErrs {
 			return false, err
 		}
 	}
@@ -655,18 +655,19 @@ var Ops = rawOpMap{
 	// exec: ( cmd1 cmd2 if -- cmd2 )
 	// bool: ( true --)
 	"if": func(cpu *CPU) error {
-		if cpu.Exec.Len() < 3 {
+		execLen := cpu.Exec.Len()
+		if execLen < 3 {
 			return CPUError("Exec stack len wasn't at least 3")
 		}
 
 		b, err := cpu.Bool.Pop()
 		if err != nil {
-			return err
+			b = false
 		}
 
-		i := cpu.Exec.Len() - 2
+		i := execLen - 2
 		if b.(bool) == true {
-			i = cpu.Exec.Len() - 3
+			i -= 1
 		}
 
 		cpu.Exec = append(cpu.Exec[:i], cpu.Exec[i+1:]...)
