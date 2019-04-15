@@ -232,6 +232,15 @@ func NewCritter(ops Genome, cfg *config.Options) Critter {
 	return Critter{ops, vm.NewCPU(ops, cfg.CPU), MaxError, fmt.Sprintf("%p", &ops)}
 }
 
+type Population struct {
+	Critters
+	latestStats *Stats
+}
+
+func (p Population) Stats(errThreshold float64) {
+
+}
+
 type Critters []Critter
 
 func NewCritters(size int) Critters {
@@ -308,7 +317,7 @@ func (cs Critters) SelectFar(rng *rand.Rand, cfg *config.Options, orig Critter) 
 }
 
 //
-// Select an individual from the population using tournament selection.
+// Select an individual from cs using tournament selection.
 //
 // Tournament selection uses the following algorithm:
 //   choose tournamentRatio * len(p) individuals from the population
@@ -364,7 +373,7 @@ func isIn(ints []int, i int) bool {
 	return false
 }
 
-// Mutate a part of the population. Modifies contents of cs
+// Mutate some of the critters. Modifies contents of cs
 func (cs Critters) Mutate(rng *rand.Rand, cfg *config.Options) Critters {
 	nToMutate := cfg.NToMutate()
 	picked := make([]int, 0, nToMutate)
@@ -382,7 +391,7 @@ func (cs Critters) Mutate(rng *rand.Rand, cfg *config.Options) Critters {
 }
 
 // Cross two individuals and replace two random individuals with the offspring
-func (cs Critters) Cross(rng *rand.Rand, cfg *config.Options) Critters {
+func (cs Critters) Cross(rng *rand.Rand, errorFn ErrorFunction, cfg *config.Options) Critters {
 	var (
 		critter1, critter2 Critter
 		idx1, idx2         int
@@ -480,7 +489,7 @@ func (cs Critters) DoYourThing(cfg *config.Options, errorFn ErrorFunction, rng *
 		}
 
 		stopCrossMutT := timer()
-		cs.Cross(rng, cfg)
+		cs.Cross(rng, errorFn, cfg)
 		if cfg.GlobalMutation {
 			cs.Mutate(rng, cfg)
 		}
@@ -500,7 +509,7 @@ func OpGenerator(rng *rand.Rand) func() vm.Op {
 	}
 }
 
-func RandPopulation(cfg *config.Options, rng *rand.Rand) Critters {
+func RandCritters(cfg *config.Options, rng *rand.Rand) Critters {
 	cg := CritterGenerator(cfg, rng)
 	p := NewCritters(cfg.PopSize)
 	for i := range p {
@@ -570,6 +579,7 @@ func SortErrorGen(seed int64, cfg *config.Options) ErrorFunction {
 		//  float64(levenshtein(outp, want)) / float64(max(outLen, inpLen))
 		// positionalError only works if len(want)==len(outp)
 		return positionalError(want, outp)
+		// return levenshtein(want, outp)
 	}
 }
 
@@ -722,13 +732,6 @@ func levenshtein(s1, s2 []int) float64 {
 
 	lenS1 := len(s1)
 	lenS2 := len(s2)
-
-	// We need to convert to []rune if the strings are non-ascii.
-	// This could be avoided by using utf8.RuneCountInString
-	// and then doing some juggling with rune indices.
-	// The primary challenge is keeping track of the previous rune.
-	// With a range loop, its not that easy. And with a for-loop
-	// we need to keep track of the inter-rune width using utf8.DecodeRuneInString
 
 	// swap to save some memory O(min(a,b)) instead of O(a)
 	if len(s1) > len(s2) {

@@ -165,13 +165,13 @@ func (s *Stack) CopyAt(i int) {
 	if i < 0 {
 		i *= -1
 	}
-	idx := i % slen
+	idx := i % (slen-1)
 	*s = append(*s, (*s)[idx])
 }
 
 func (s *Stack) Shove(i int) {
 	slen := len(*s)
-	if slen < 2 {
+	if slen < 3 {
 		return
 	}
 	if i < 0 {
@@ -181,7 +181,7 @@ func (s *Stack) Shove(i int) {
 	// shove top of stack into idx
 	top, _ := s.Pop()
 	slen--
-	idx := i % slen
+	idx := i % (slen-1)
 	*s = append(*s, nil)
 	copy((*s)[idx+1:], (*s)[idx:])
 	(*s)[idx] = top
@@ -195,7 +195,7 @@ func (s *Stack) Yank(i int) {
 	if i < 0 {
 		i *= -1
 	}
-	idx := i % slen
+	idx := i % (slen-1)
 	it := (*s)[idx]
 	*s = append(append((*s)[:idx], (*s)[idx+1:]...), it)
 }
@@ -497,20 +497,15 @@ func (fn StackFn) ToOpFn() OpFn {
 }
 
 var Ops = rawOpMap{
-	// "len": func(cpu *CPU) error {
-	// 	stack := cpu.PopStack()
-	// 	cpu.Int.Push(cpu.OfType(stack).Len())
-	// 	return nil
-	// },
 	"rot":  StackFn((*Stack).Rot).ToOpFn(),
 	"rot3": StackFn((*Stack).Rot3).ToOpFn(),
-	// "dup":   StackFn((*Stack).Dup).ToOpFn(),
+	"dup":   StackFn((*Stack).Dup).ToOpFn(),
 	"swap": StackFn((*Stack).Swap).ToOpFn(),
-	// "over":  StackFn((*Stack).Over).ToOpFn(),
-	// "nip":   StackFn((*Stack).Over).ToOpFn(),
-	// "tuck":  StackFn((*Stack).Over).ToOpFn(),
+	"over":  StackFn((*Stack).Over).ToOpFn(),
+	"nip":   StackFn((*Stack).Over).ToOpFn(),
+	"tuck":  StackFn((*Stack).Over).ToOpFn(),
 	// "reset": StackFn((*Stack).Reset).ToOpFn(),
-	// "drop":  StackFn((*Stack).Drop).ToOpFn(),
+	"drop":  StackFn((*Stack).Drop).ToOpFn(),
 	// "yank": func(cpu *CPU) error {
 	// 	stack := cpu.PopStack()
 	// 	stackToYank := cpu.OfType(stack)
@@ -539,6 +534,21 @@ var Ops = rawOpMap{
 	// 	return nil
 	// },
 	//
+	// "1": func(cpu *CPU) error {
+	// 	cpu.Int.Push(1)
+	// 	return nil
+	// },
+	//
+	// "2": func(cpu *CPU) error {
+	// 	cpu.Int.Push(2)
+	// 	return nil
+	// },
+	//
+	// "10": func(cpu *CPU) error {
+	// 	cpu.Int.Push(10)
+	// 	return nil
+	// },
+	//
 	// "copyat": func(cpu *CPU) error {
 	// 	stack := cpu.PopStack()
 	// 	stackToCopy := cpu.OfType(stack)
@@ -552,15 +562,17 @@ var Ops = rawOpMap{
 	// 	stackToCopy.CopyAt(nToCopy.(int))
 	// 	return nil
 	// },
-	//
-	//
+
 	// "add": func(cpu *CPU) error {
 	// 	// int: (a b -- a+b)
-	// 	if cpu.Int.Len() < 2 {
-	// 		return CPUError("Int stack len wasn't 2")
+	// 	b, err := cpu.Int.Pop()
+	// 	if err != nil {
+	// 		return err
 	// 	}
-	// 	b, _ := cpu.Int.Pop()
-	// 	a, _ := cpu.Int.Pop()
+	// 	a, err := cpu.Int.Pop()
+	// 	if err != nil {
+	// 		return err
+	// 	}
 	// 	cpu.Int.Push(a.(int) + b.(int))
 	// 	return nil
 	// },

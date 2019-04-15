@@ -16,24 +16,25 @@ import (
 
 func main() {
 	conf := &config.Options{
-		MutationRatio:   0.05,
-		CrossoverMutP:   0.001,
+		MutationRatio:        0.05,
+		CrossoverMutP:        0.001,
 		InitialMutSigmaRatio: 0.01,
-		PointMutP:       0.01,
-		TransposeMutP:   0.01,
-		TournamentP:     0.65,
-		TournamentRatio: 0.0,
-		ErrThreshold:    0.5,
-		MinEuclDist:     0.7,
-		MaxGenerations:  10000,
-		PopSize:         300,
-		Verbose:         false,
-		MinTrainArrLen:  5,
-		MaxTrainArrLen:  15,
-		GlobalMutation:  true,
+		PointMutP:            0.01,
+		TransposeMutP:        0.01,
+		TournamentP:          0.65,
+		TournamentRatio:      0.0,
+		ErrThreshold:         0.5,
+		MinEuclDist:          0.7,
+		MaxGenerations:       10000,
+		PopSize:              300,
+		Verbose:              false,
+		MinTrainArrLen:       5,
+		MaxTrainArrLen:       15,
+		GlobalMutation:       true,
+		// CritterSize: 17,
 		CPU: config.CPU{
-			MaxStepsPerInput: 15,
-			MaxExecStackSize: 30,
+			MaxStepsPerInput: 10,
+			MaxExecStackSize: 40,
 			FatalErrors:      false,
 		},
 	}
@@ -66,7 +67,7 @@ func main() {
 
 	conf.SetDefaults()
 
-	p := life.RandPopulation(conf, life.NewRNG(0))
+	p := life.RandCritters(conf, life.NewRNG(0))
 	errorFn := life.SortErrorGen(0, conf)
 	_, _, sortaSorted := p.DoYourThing(conf, errorFn, life.NewRNG(0), nums)
 	fmt.Printf("%v", sortaSorted)
