@@ -10,6 +10,10 @@ type CPU struct {
 	FatalErrors      bool    `usage:"whether errors during execution (such as popping an empty stack) are fatal"`
 }
 
+type Stats struct {
+	AvgGenerations int `usage:"when generating stats, average over this many generations"`
+}
+
 type Options struct {
 	// The ratio of the population in a tournament, i.e. tournament size. The smaller this is, the
 	// likelier it is that less fit individuals will get to reproduce
@@ -52,6 +56,7 @@ type Options struct {
 	CritterSize int `usage:"critter size. If 0, will be random between 3 and CPU.maxExecStackSize"`
 
 	CPU
+	Stats
 }
 
 

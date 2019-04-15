@@ -358,7 +358,6 @@ func (c CPU) Clone() *CPU {
 // TODO: input stack selection
 func (c *CPU) Input(input []int) *CPU {
 	c.input = input
-	c.InpLen = len(input)
 	return c.Reset()
 }
 
@@ -368,9 +367,11 @@ func (c *CPU) OrigInput() []int {
 
 func (c *CPU) Reset() *CPU {
 	c.Stacks.Reset()
+	c.Stats.Reset()
 	c.resetExec()
 	c.Int = fucking.InterfaceSlice(c.input)
 	c.NSteps = 0
+	c.InpLen = len(c.input)
 	c.isp1 = 0
 	c.isp2 = 0
 	return c
@@ -381,7 +382,8 @@ type Stats struct {
 }
 
 func (s *Stats) Reset() {
-	*s = Stats{}
+	s.NSteps = 0
+	s.InpLen = 0
 }
 
 func (c *CPU) resetExec() {

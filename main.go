@@ -4,10 +4,13 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ORBAT/bort/pkg/config"
 	"github.com/ORBAT/bort/pkg/flagon"
@@ -34,8 +37,12 @@ func main() {
 		// CritterSize: 17,
 		CPU: config.CPU{
 			MaxStepsPerInput: 10,
-			MaxExecStackSize: 40,
+			MaxExecStackSize: 30,
 			FatalErrors:      false,
+		},
+
+		Stats: config.Stats{
+			AvgGenerations: 20,
 		},
 	}
 	flagon.Struct(conf)
@@ -66,9 +73,38 @@ func main() {
 	}
 
 	conf.SetDefaults()
-
-	p := life.RandCritters(conf, life.NewRNG(0))
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	p := life.NewPopulation(conf, rng)
 	errorFn := life.SortErrorGen(0, conf)
-	_, _, sortaSorted := p.DoYourThing(conf, errorFn, life.NewRNG(0), nums)
-	fmt.Printf("%v", sortaSorted)
+	bestToSortErr := 1.0
+
+	wantSorted := make([]int, len(nums))
+	copy(wantSorted, nums)
+	sort.Ints(wantSorted)
+
+	var (
+		bestSort []interface{}
+	)
+
+	for i := 0; i < conf.MaxGenerations; i++ {
+		p.Step(conf, errorFn, rng)
+		if candidates := p.Stats.LowErr; len(candidates) != 0 {
+			for _, candidate := range candidates {
+				toSortErr := errorFn(candidate, nums...)
+				if toSortErr < bestToSortErr {
+					if conf.Verbose {
+						log.Printf("gen %4d - best sort of your array so far (error %1.3f) :\norig: %v\nnow:  %v\nwant: %v\n%s", p.Generation, toSortErr, nums, candidate.Int, wantSorted, candidate.String())
+					}
+					bestToSortErr = toSortErr
+					bestSort = candidate.Int
+				}
+				if toSortErr == 0 {
+					goto otog
+				}
+
+			}
+		}
+	}
+otog:
+	fmt.Printf("%v", bestSort)
 }
