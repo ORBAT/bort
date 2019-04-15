@@ -19,11 +19,11 @@ import (
 
 func main() {
 	conf := &config.Options{
-		MutationRatio:   0.015,
-		CrossoverMutP:   0.0005,
+		MutationRatio:   0.01,
+		CrossoverMutP:   0.0008,
 		MutSigmaRatio:   0.5,
-		PointMutP:       0.005,
-		TransposeMutP:   0.008,
+		PointMutP:       0.007,
+		TransposeMutP:   0.016,
 		TournamentP:     0.65,
 		TournamentRatio: 0.0,
 		ErrThreshold:    0.5,
@@ -42,7 +42,7 @@ func main() {
 		},
 
 		Stats: config.Stats{
-			AvgGenerations: 10,
+			AvgGenerations: 4,
 		},
 	}
 	flagon.Struct(conf)
@@ -111,8 +111,20 @@ otog:
 
 	err := 0.0
 	if best != nil {
-		err = errorFn(best, nums...)
+		err = best.CalcError(errorFn, nums...).Error
 	}
 	log.Printf("Solution with error %.2f after %d generations: %s\n", err, p.Generation, best)
 	fmt.Printf("%v", bestSort)
+}
+
+func isSame(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i, aa := range a {
+		if aa != b[i] {
+			return false
+		}
+	}
+	return true
 }

@@ -300,7 +300,7 @@ func (p Population) Step(cfg *config.Options, errorFn ErrorFunction, rng *rand.R
 	p.Stats.BetterThanParentsRatio.Add(float64(nBetter / 2))
 	p.Generation++
 
-	if cfg.Verbose && p.Generation%100 == 0 {
+	if cfg.Verbose && p.Generation%300 == 0 {
 		genBest := p.Best()
 		st := p.Stats
 		origInp := genBest.OrigInput()
