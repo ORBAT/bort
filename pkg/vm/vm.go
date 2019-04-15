@@ -372,6 +372,7 @@ func (c *CPU) Reset() *CPU {
 	c.Int = fucking.InterfaceSlice(c.input)
 	c.NSteps = 0
 	c.InpLen = len(c.input)
+	c.halt = false
 	c.isp1 = 0
 	c.isp2 = 0
 	return c
