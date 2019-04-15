@@ -37,6 +37,8 @@ Note that you may have to run `bort` several times, and it might not be able to 
 - int: integer stack. This is where the input is written, and where the output is read from
 - bool: boolean stack
 
+Code can modify the contents of the exec stack, i.e. the code can be self-modifying
+
 There are also two registers, Int Stack Pointer 1 and 2, or ISP1 and ISP2.
 
 The instruction set is:
