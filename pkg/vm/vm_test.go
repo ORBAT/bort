@@ -5,24 +5,56 @@ import (
 )
 
 func TestY(t *testing.T) {
-	ifErr := fatalIfErr(t)
-	var cpu CPU
-	cpu.maxExecSz = 20
-	cpu.maxStepsPerInp = 5
-	cpu.Exec.Push(Ops["not"])
-	cpu.Exec.Push(Ops["if"])
-	cpu.Exec.Push(Ops["y"])
-	_, err := cpu.Step()
-	ifErr(err, "stepping cpu")
-	exp := `not
+	t.Run("one y", func(t *testing.T) {
+		ifErr := fatalIfErr(t)
+		var cpu CPU
+		cpu.maxExecSz = 20
+		cpu.maxStepsPerInp = 5
+		cpu.Exec.Push(Ops["not"])
+		cpu.Exec.Push(Ops["if"])
+		cpu.Exec.Push(Ops["y"])
+		_, err := cpu.Step()
+		ifErr(err, "stepping cpu")
+		exp := `not
 if
 y
 not
 if
 `
-	if got := cpu.ExecString(); got != exp {
-		t.Errorf("expected:\n%s\ngot:\n%s", exp, got)
-	}
+		if got := cpu.ExecString(); got != exp {
+			t.Errorf("expected:\n%s\ngot:\n%s", exp, got)
+		}
+	})
+	t.Run("two ys", func(t *testing.T) {
+		ifErr := fatalIfErr(t)
+		var cpu CPU
+		cpu.maxExecSz = 20
+		cpu.maxStepsPerInp = 5
+		cpu.Exec.Push(Ops["and"])
+		cpu.Exec.Push(Ops["rot"])
+		cpu.Exec.Push(Ops["y"])
+		cpu.Exec.Push(Ops["not"])
+		cpu.Exec.Push(Ops["if"])
+		cpu.Exec.Push(Ops["y"])
+		// and rot y not if y
+		// 0   1   2 3   4  5
+		// nextY 2, nExec 6
+		_, err := cpu.Step()
+		ifErr(err, "stepping cpu")
+		exp := `and
+rot
+y
+not
+if
+y
+not
+if
+`
+		if got := cpu.ExecString(); got != exp {
+			t.Errorf("expected:\n%s\ngot:\n%s", exp, got)
+		}
+
+	})
 }
 
 func TestIf(t *testing.T) {

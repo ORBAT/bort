@@ -165,7 +165,7 @@ func (s *Stack) CopyAt(i int) {
 	if i < 0 {
 		i *= -1
 	}
-	idx := i % (slen-1)
+	idx := i % (slen - 1)
 	*s = append(*s, (*s)[idx])
 }
 
@@ -181,7 +181,7 @@ func (s *Stack) Shove(i int) {
 	// shove top of stack into idx
 	top, _ := s.Pop()
 	slen--
-	idx := i % (slen-1)
+	idx := i % (slen - 1)
 	*s = append(*s, nil)
 	copy((*s)[idx+1:], (*s)[idx:])
 	(*s)[idx] = top
@@ -195,7 +195,7 @@ func (s *Stack) Yank(i int) {
 	if i < 0 {
 		i *= -1
 	}
-	idx := i % (slen-1)
+	idx := i % (slen - 1)
 	it := (*s)[idx]
 	*s = append(append((*s)[:idx], (*s)[idx+1:]...), it)
 }
@@ -368,6 +368,7 @@ func (c *CPU) OrigInput() []int {
 func (c *CPU) Reset() *CPU {
 	c.Stacks.Reset()
 	c.Stats.Reset()
+	c.Err = nil
 	c.resetExec()
 	c.Int = fucking.InterfaceSlice(c.input)
 	c.NSteps = 0
@@ -469,20 +470,34 @@ func (pm rawOpMap) ToOps() (ops map[string]Op) {
 }
 
 // Y combinator(ish) operator
-//   ( a b c d y -- a b c d y a b c d )
+//   ( a b y c d y -- a b y c d y c d )
 //
-// y basically copies the Exec stack, and prepends the copy (along with itself) back to Exec
+// y basically copies the Exec stack up until the next y (or the start of the stack if none found),
+// and prepends the copy (along with itself) back to Exec
 func y(cpu *CPU) error {
 	// if exec only has y on it we might as well nuke it and call it a day since that'd be an
 	// infinite loop
-	if len(cpu.Exec) == 1 {
+	nExec := len(cpu.Exec)
+	if nExec == 1 {
 		cpu.Exec.Reset()
 		return nil
 	}
+	nextY := nExec - 2
+	for ; nextY >= 0; nextY-- {
+		if cpu.Exec[nextY].(Op).Name == "y" {
+			nextY += 1
+			break
+		}
+	}
 
-	clone := make(Stack, len(cpu.Exec))
+	if nextY < 0 {
+		nextY = 0
+	}
+
+	clone := make(Stack, (nExec)-nextY)
 	// include the topmost y in the clone, since the top of exec gets popped after each step anyhow
-	copy(clone, cpu.Exec)
+	toCopy := cpu.Exec[nextY : nExec]
+	copy(clone, toCopy)
 	cpu.Exec = append(cpu.Exec, clone...)
 	if cpu.Exec.Len() > cpu.maxExecSz {
 		cpu.Exec = cpu.Exec[:cpu.maxExecSz]
@@ -500,10 +515,10 @@ func (fn StackFn) ToOpFn() OpFn {
 }
 
 var Ops = rawOpMap{
-	"rot":  StackFn((*Stack).Rot).ToOpFn(),
-	"rot3": StackFn((*Stack).Rot3).ToOpFn(),
+	"rot":   StackFn((*Stack).Rot).ToOpFn(),
+	"rot3":  StackFn((*Stack).Rot3).ToOpFn(),
 	"dup":   StackFn((*Stack).Dup).ToOpFn(),
-	"swap": StackFn((*Stack).Swap).ToOpFn(),
+	"swap":  StackFn((*Stack).Swap).ToOpFn(),
 	"over":  StackFn((*Stack).Over).ToOpFn(),
 	"nip":   StackFn((*Stack).Over).ToOpFn(),
 	"tuck":  StackFn((*Stack).Over).ToOpFn(),
@@ -601,9 +616,9 @@ var Ops = rawOpMap{
 	// 	return nil
 	// },
 
-	"exec":  StackExec.ToOpFn(),
+	"exec": StackExec.ToOpFn(),
 	"bool": StackBool.ToOpFn(),
-	// "stack": StackBool.ToOpFn(),
+	"stack": StackBool.ToOpFn(),
 	"int": StackInt.ToOpFn(),
 	//
 	// "lt": func(cpu *CPU) error {

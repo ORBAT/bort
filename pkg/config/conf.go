@@ -1,6 +1,7 @@
 package config
 
 import (
+	"math"
 	"math/rand"
 )
 
@@ -44,8 +45,8 @@ type Options struct {
 	// MaxGenerations is the maximum number of generations to run
 	MaxGenerations int `usage:"the maximum number of generations to run"`
 
-	MinTrainArrLen int `usage:"minimum training array size"`
-	MaxTrainArrLen int `usage:"maximum training array size"`
+	MinTrainArrLen int `usage:"minimum training array size. Set to 0 to use input length"`
+	MaxTrainArrLen int `usage:"maximum training array size. Set to 0 to use input length"`
 
 	GlobalMutation bool `usage:"whether to mutate mutationRatio of the population after each generation"`
 
@@ -60,13 +61,12 @@ type Options struct {
 }
 
 func (o *Options) NormalP(mutP float64, rng *rand.Rand) float64 {
-	return rng.NormFloat64()*(o.MutSigmaRatio*mutP) + mutP
+	return math.Abs(rng.NormFloat64()*(o.MutSigmaRatio*mutP) + mutP)
 }
 
 // NToMutate returns the number of individuals to mutate in p
 func (o *Options) NToMutate(rng *rand.Rand) int {
-	return max(min(int(o.NormalP(o.MutationRatio, rng) * float64(o.PopSize)), o.PopSize), 1)
-	// return int(math.Floor(o.MutationRatio * float64(o.PopSize)))
+	return max(min(int(o.NormalP(o.MutationRatio, rng)*float64(o.PopSize)), o.PopSize), 1)
 }
 
 func (o *Options) MaxCritterSize() int {

@@ -92,24 +92,24 @@ func (c Critter) String() string {
 
 // Mutate a critter. xoverP gives the probability of crossover mutation, pointMutP for point
 // mutation and transposeMutP for transposition.
-func (c Critter) Mutate(rng *rand.Rand, cfg *config.Options) *Critter {
-	if rng.Float64() < cfg.CrossoverMutP {
+func (c Critter) Mutate(rng *rand.Rand, cfg *config.Options, pointP, transpP, xoverMutP float64) *Critter {
+	if rng.Float64() < xoverMutP {
 		cg := CritterGenerator(cfg, rng)
 		crossed, _ := c.Cross(rng, cg(), cfg)
 		return crossed
 	}
+	// pointP := cfg.NormalP(cfg.PointMutP, rng)
+	// transpP := cfg.NormalP(cfg.TransposeMutP, rng)
 	opGen := OpGenerator(rng)
 	genomeLen := len(c.Genome)
 	newGen := make([]vm.Op, genomeLen)
 	copy(newGen, c.Genome)
 	for i := range newGen {
-		pointP := cfg.NormalP(cfg.PointMutP, rng)
 		if rng.Float64() < pointP {
 			newGen[i] = opGen()
 		}
 
-		traspP := cfg.NormalP(cfg.TransposeMutP, rng)
-		if rng.Float64() < traspP {
+		if rng.Float64() < transpP {
 			otherPos := i
 			for otherPos == i {
 				otherPos = rng.Intn(genomeLen)
@@ -212,8 +212,11 @@ func cutDown(g Genome, maxLen int) Genome {
 //     0 1 f g h i j 6 7 8 9
 func (c *Critter) Cross(rng *rand.Rand, other *Critter, cfg *config.Options) (offspring1, offspring2 *Critter) {
 	offspring1, offspring2 = c.cross(other, rng, 0, cfg)
-	return offspring1.Mutate(rng, cfg),
-		offspring2.Mutate(rng, cfg)
+	pointP := cfg.NormalP(cfg.PointMutP, rng)
+	transpP := cfg.NormalP(cfg.TransposeMutP, rng)
+	xoverP := cfg.NormalP(cfg.CrossoverMutP, rng)
+	return offspring1.Mutate(rng, cfg, pointP, transpP, xoverP),
+		offspring2.Mutate(rng, cfg, pointP, transpP, xoverP)
 }
 
 type CritterGen func() *Critter
@@ -262,23 +265,29 @@ func NewPopulation(cfg *config.Options, rng *rand.Rand) Population {
 			BetterThanParentsRatio: ewma.NewMovingAverage(nGen),
 			StepTime:               ewma.NewMovingAverage(nGen),
 			AvgNLowErr:             ewma.NewMovingAverage(nGen),
+			BestError:              ewma.NewMovingAverage(nGen),
 		},
 		cfg.PopSize,
 	}
 	return p
 }
 
-func (p Population) calcStats(errThreshold float64) {
+func (p *Population) calcStats(errThreshold float64) {
 	popSize := float64(p.Len())
 	errSum := 0.0
 	nStepsPerInpSum := 0.0
 	lowErr := Critters{}
+	lowestErr := p.Critters[0]
 	for _, cr := range p.Critters {
-		errSum += cr.Error
-		if cr.NSteps != 0 {
-			nStepsPerInpSum += float64(cr.NSteps) / float64(cr.InpLen)
+		crErr := cr.Error
+		if crErr < lowestErr.Error {
+			lowestErr = cr
 		}
-		if cr.Error < errThreshold {
+		errSum += crErr
+		if nSteps := cr.NSteps; nSteps != 0 {
+			nStepsPerInpSum += float64(nSteps) / float64(cr.InpLen)
+		}
+		if crErr < errThreshold {
 			lowErr = append(lowErr, cr)
 		}
 	}
@@ -286,9 +295,12 @@ func (p Population) calcStats(errThreshold float64) {
 	p.Stats.AvgStepsPerInp.Add(nStepsPerInpSum / popSize)
 	p.Stats.LowErr = lowErr
 	p.Stats.AvgNLowErr.Add(float64(lowErr.Len()))
+
+	p.Stats.BestError.Add(lowestErr.Error)
 }
 
-func (p Population) Step(cfg *config.Options, errorFn ErrorFunction, rng *rand.Rand) {
+
+func (p *Population) Step(cfg *config.Options, errorFn ErrorFunction, rng *rand.Rand) {
 	stopStepTimer := timer()
 	offs, parents := p.Cross(rng, cfg)
 	if cfg.GlobalMutation {
@@ -299,7 +311,6 @@ func (p Population) Step(cfg *config.Options, errorFn ErrorFunction, rng *rand.R
 	nBetter := offs.BetterThan(parents)
 	p.Stats.BetterThanParentsRatio.Add(float64(nBetter / 2))
 	p.Generation++
-
 	if cfg.Verbose && p.Generation%300 == 0 {
 		genBest := p.Best()
 		st := p.Stats
@@ -308,15 +319,15 @@ func (p Population) Step(cfg *config.Options, errorFn ErrorFunction, rng *rand.R
 		copy(want, origInp)
 		sort.Ints(want)
 		avgNLowErr := st.AvgNLowErr.Value()
-		log.Printf("gen %4d - avgErr %1.3f - err<%1.2f = %.2f%% (%2d) - offspringsBetter %2.2f%% \navgNSteps/inp %2.1f - step time %s / critter - mutSigma %2.5f\n\norig: %v\ngot:  %v\nwant: %v\n%s\n",
-			p.Generation, st.AvgErr.Value(), cfg.ErrThreshold, (avgNLowErr/float64(p.Size))*100, int(avgNLowErr), st.BetterThanParentsRatio.Value()*100, st.AvgStepsPerInp.Value(), time.Duration(st.StepTime.Value()), cfg.MutSigmaRatio,
+		log.Printf("gen %4d - avgErr %1.3f (best %1.3f) - err<%1.2f = %.2f%% (%2d) - offspringsBetter %2.2f%% \navgNSteps/inp %2.1f - step time %s / critter - mutSigma %2.5f\n\norig: %v\ngot:  %v\nwant: %v\n%s\n",
+			p.Generation, st.AvgErr.Value(), st.BestError.Value(), cfg.ErrThreshold, (avgNLowErr/float64(p.Size))*100, int(avgNLowErr), st.BetterThanParentsRatio.Value()*100, st.AvgStepsPerInp.Value(), time.Duration(st.StepTime.Value()), cfg.MutSigmaRatio,
 			origInp, genBest.Int, want, genBest.String())
 
 	}
 
-	const step = 0.01
+	const step = 0.05
 
-	if p.BetterThanParentsRatio.Value() > 0.2 {
+	if p.BetterThanParentsRatio.Value() > 0.20 {
 		cfg.MutSigmaRatio = math.Min(cfg.MutSigmaRatio*1+step, 1000)
 	} else {
 		cfg.MutSigmaRatio = math.Max(cfg.MutSigmaRatio*1-(step*2), 0.001)
@@ -358,14 +369,20 @@ func (cs Critters) Swap(i, j int) {
 
 type ErrorFunction func(c *Critter, input ...int) float64
 
-func calcErrWorker(p Critters, errorFn ErrorFunction, wg *sync.WaitGroup) {
+func calcErrWorker(p Critters, errorFn ErrorFunction, wg *sync.WaitGroup, input ...int) {
 	for i, critter := range p {
-		p[i] = critter.CalcError(errorFn)
+		p[i] = critter.CalcError(errorFn, input...)
 	}
 	wg.Done()
 }
 
-func (cs Critters) CalcErrors(errorFn ErrorFunction) Critters {
+func (cs Critters) Clone() Critters {
+	cscopy := make(Critters, len(cs))
+	copy(cscopy, cs)
+	return cscopy
+}
+
+func (cs Critters) CalcErrors(errorFn ErrorFunction, input ...int) Critters {
 	pcopy := cs
 	batchSize := len(pcopy) / runtime.GOMAXPROCS(0)
 	var wg sync.WaitGroup
@@ -373,15 +390,20 @@ func (cs Critters) CalcErrors(errorFn ErrorFunction) Critters {
 		var batch Critters
 		pcopy, batch = pcopy[batchSize:], pcopy[0:batchSize:batchSize]
 		wg.Add(1)
-		go calcErrWorker(batch, errorFn, &wg)
+		go calcErrWorker(batch, errorFn, &wg, input...)
 	}
 	wg.Wait()
 	return cs
 }
 
 func (cs Critters) Best() *Critter {
-	sort.Sort(cs)
-	return cs[0]
+	lowestErr := cs[0]
+	for _, cr := range cs {
+		if cr.Error < lowestErr.Error {
+			lowestErr = cr
+		}
+	}
+	return lowestErr
 }
 
 // Delete individual at index idx
@@ -473,6 +495,9 @@ func isIn(ints []int, i int) bool {
 func (cs Critters) Mutate(rng *rand.Rand, cfg *config.Options) Critters {
 	nToMutate := cfg.NToMutate(rng)
 	picked := make([]int, 0, nToMutate)
+	pointP := cfg.NormalP(cfg.PointMutP, rng)
+	transpP := cfg.NormalP(cfg.TransposeMutP, rng)
+	xoverP := cfg.NormalP(cfg.CrossoverMutP, rng)
 
 	for i := 0; i < nToMutate; i++ {
 		critter, idx := cs.SelectRandom(rng)
@@ -480,7 +505,7 @@ func (cs Critters) Mutate(rng *rand.Rand, cfg *config.Options) Critters {
 			critter, idx = cs.SelectRandom(rng)
 		}
 		picked = append(picked, idx)
-		cs[i] = critter.Mutate(rng, cfg)
+		cs[i] = critter.Mutate(rng, cfg, pointP, transpP, xoverP)
 	}
 
 	return cs
@@ -514,6 +539,7 @@ type Stats struct {
 	BetterThanParentsRatio ewma.MovingAverage
 	StepTime               ewma.MovingAverage
 	AvgNLowErr             ewma.MovingAverage
+	BestError              ewma.MovingAverage
 	LowErr                 Critters
 	Generation             uint32
 }
@@ -594,9 +620,9 @@ func SortErrorGen(seed int64, cfg *config.Options) ErrorFunction {
 
 		outp := fucking.IntSlice(c.Int)
 
-		// if isSame(outp, inp) {
-		// 	return MaxError
-		// }
+		if isSame(outp, inp) {
+			return MaxError
+		}
 
 		if isSame(outp, want) {
 			return 0
@@ -610,6 +636,9 @@ func SortErrorGen(seed int64, cfg *config.Options) ErrorFunction {
 }
 
 func genTestSlice(inpLen int, rng *rand.Rand) (inp []int, want []int) {
+	if inpLen == 0 {
+		panic("wwadas")
+	}
 	inp = make([]int, inpLen)
 	for i := range inp {
 		inp[i] = rng.Intn(21)
@@ -678,6 +707,9 @@ func closestIdx(needle, wantIdx int, haystack []int) int {
 
 // TODO: unfuck. There has to be a better way to do this
 func maxDist(len int) float64 {
+	if len == 0 {
+		return 0
+	}
 	if len == 1 {
 		return 0
 	}
@@ -762,6 +794,7 @@ func levenshtein(s1, s2 []int) float64 {
 	// swap to save some memory O(min(a,b)) instead of O(a)
 	if len(s1) > len(s2) {
 		s1, s2 = s2, s1
+		lenS1, lenS2 = lenS2, lenS1
 	}
 
 	// init the row

@@ -32,18 +32,12 @@ func TestCross(t *testing.T) {
 	t.Log("offs", offs.ExecString())
 }
 
-func TestMutate(t *testing.T) {
-	cr1 := NewCritter([]vm.Op{vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"], vm.Ops["y"], vm.Ops["if"]}, cfg)
-	crm := cr1.Mutate(NewRNG(3), cfg)
-	t.Log(crm.String())
-}
-
 func TestPos(t *testing.T) {
 	// orig: [99 5 6 1 4 -555 1 0]
 	// 	now:  []
 	// 	want: [-555 0 1 1 4 5 6 99]
-	gots := []int{1,2,3}
-	want := []int{1,2,3,4}
+	gots := []int{0,2,7,11,11,13,14,15}
+	want := []int{1,2,3,4,5,6,7,9}
 	t.Log(positionalError(want, gots))
 }
 

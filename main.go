@@ -19,22 +19,22 @@ import (
 
 func main() {
 	conf := &config.Options{
-		MutationRatio:   0.01,
-		CrossoverMutP:   0.0008,
+		MutationRatio:   0.05,
+		CrossoverMutP:   0.001,
 		MutSigmaRatio:   0.5,
-		PointMutP:       0.007,
+		PointMutP:       0.009,
 		TransposeMutP:   0.016,
-		TournamentP:     0.65,
+		TournamentP:     0.60,
 		TournamentRatio: 0.0,
-		ErrThreshold:    0.5,
-		MinEuclDist:     0.7,
+		ErrThreshold:    0.6,
+		MinEuclDist:     0.8,
 		MaxGenerations:  10000,
-		PopSize:         100,
+		PopSize:         440,
 		Verbose:         false,
-		MinTrainArrLen:  5,
-		MaxTrainArrLen:  15,
+		MinTrainArrLen:  0,
+		MaxTrainArrLen:  0,
 		GlobalMutation:  true,
-		// CritterSize: 17,
+		CritterSize:     20,
 		CPU: config.CPU{
 			MaxStepsPerInput: 15,
 			MaxExecStackSize: 35,
@@ -42,7 +42,7 @@ func main() {
 		},
 
 		Stats: config.Stats{
-			AvgGenerations: 4,
+			AvgGenerations: 15,
 		},
 	}
 	flagon.Struct(conf)
@@ -73,6 +73,14 @@ func main() {
 	}
 
 	conf.SetDefaults()
+	if conf.MinTrainArrLen == 0 {
+		conf.MinTrainArrLen = len(nums)
+	}
+
+	if conf.MaxTrainArrLen == 0 {
+		conf.MaxTrainArrLen = len(nums)
+	}
+
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	p := life.NewPopulation(conf, rng)
 	errorFn := life.SortErrorGen(0, conf)
@@ -84,7 +92,7 @@ func main() {
 
 	var (
 		bestSort []interface{}
-		best *life.Critter
+		best     *life.Critter
 	)
 
 	for i := 0; i < conf.MaxGenerations; i++ {
@@ -109,11 +117,10 @@ func main() {
 	}
 otog:
 
-	err := 0.0
-	if best != nil {
-		err = best.CalcError(errorFn, nums...).Error
+	if conf.Verbose && best != nil {
+		best.CalcError(errorFn, nums...)
+		log.Printf("Solution after %d generations: %s\n", p.Generation, best)
 	}
-	log.Printf("Solution with error %.2f after %d generations: %s\n", err, p.Generation, best)
 	fmt.Printf("%v", bestSort)
 }
 
