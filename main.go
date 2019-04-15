@@ -16,23 +16,23 @@ import (
 
 func main() {
 	conf := &config.Options{
-		MutationRatio:       0.01,
-		CrossoverMutP:       0.001,
-		PointMutP:           0.008,
-		TransposeMutP:       0.008,
-		TournamentP:         0.65,
-		TournamentRatio:     0.0,
-		ErrThreshold:        0.2,
-		MinEuclDist:         0.7,
-		MaxGenerations:      4000,
-		PopSize:             500,
-		Verbose:             false,
-		MinTrainingArrayLen: 10,
-		MaxTrainingArrayLen: 15,
-		GlobalMutation:      true,
+		MutationRatio:   0.05,
+		CrossoverMutP:   0.001,
+		PointMutP:       0.01,
+		TransposeMutP:   0.01,
+		TournamentP:     0.65,
+		TournamentRatio: 0.0,
+		ErrThreshold:    0.5,
+		MinEuclDist:     0.7,
+		MaxGenerations:  10000,
+		PopSize:         300,
+		Verbose:         false,
+		MinTrainArrLen:  5,
+		MaxTrainArrLen:  15,
+		GlobalMutation:  true,
 		CPU: config.CPU{
-			MaxExecStackSize: 15,
-			MaxStepsPerInput: 8,
+			MaxStepsPerInput: 15,
+			MaxExecStackSize: 30,
 			FatalErrors:      false,
 		},
 	}
@@ -63,9 +63,7 @@ func main() {
 		nums = append(nums, n)
 	}
 
-	if conf.TournamentRatio == 0 {
-		conf.TournamentRatio = 7 / float64(conf.PopSize)
-	}
+	conf.SetDefaults()
 
 	p := life.NewPopulation(conf, life.NewRNG(0))
 	errorFn := life.SortErrorGen(0, conf)

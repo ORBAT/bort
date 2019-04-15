@@ -15,7 +15,6 @@ var cfg = &config.Options{
 	CrossoverMutP:   1,
 	PointMutP:       0,
 	TransposeMutP:   0,
-	CrossoverRatio:  0,
 	ErrThreshold:    0,
 	CPU: config.CPU{
 		MaxExecStackSize: 25,
@@ -43,8 +42,8 @@ func TestPos(t *testing.T) {
 	// orig: [99 5 6 1 4 -555 1 0]
 	// 	now:  []
 	// 	want: [-555 0 1 1 4 5 6 99]
-	gots := []int{-555, 0, 1, 1, 5, 99, 4, 6}
-	want := []int{-555, 0, 1, 1, 4, 5, 6, 99}
+	gots := []int{2,3,1,0}
+	want := []int{1,2,3,4}
 	t.Log(positionalError(want, gots))
 }
 

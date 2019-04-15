@@ -120,7 +120,7 @@ func (s *Stack) Pop() (interface{}, error) {
 }
 
 func (s *Stack) Reset() {
-	*s = []interface{}{}
+	*s = (*s)[:0] // []interface{}{}
 }
 
 // Unorthodox rot for the entire stack, not just top 3: ( a b c d -- d a b c )
@@ -271,8 +271,8 @@ func NewCPU(exec []Op, cfg config.CPU) *CPU {
 		Stacks: Stacks{
 			Exec: fucking.InterfaceSlice(exec),
 		},
-		rom:       fucking.InterfaceSlice(exec),
-		maxExecSz: cfg.MaxExecStackSize,
+		rom:            fucking.InterfaceSlice(exec),
+		maxExecSz:      cfg.MaxExecStackSize,
 		maxStepsPerInp: cfg.MaxStepsPerInput,
 	}
 }
@@ -295,15 +295,14 @@ func (fn OpFn) Op(n string) Op {
 type CPU struct {
 	// TODO: make input & output stack configurable
 	Stacks
-	NSteps    uint32
-	Err       error
-	maxExecSz int
+	Stats
+	Err            error
+	maxExecSz      int
 	maxStepsPerInp float64
 
-	input  []int
-	rom    []interface{}
-	inpLen int
-	halt   bool
+	input []int
+	rom   []interface{}
+	halt  bool
 
 	isp1, isp2 uint16
 }
@@ -359,7 +358,7 @@ func (c CPU) Clone() *CPU {
 // TODO: input stack selection
 func (c *CPU) Input(input []int) *CPU {
 	c.input = input
-	c.inpLen = len(input)
+	c.InpLen = len(input)
 	return c.Reset()
 }
 
@@ -375,6 +374,14 @@ func (c *CPU) Reset() *CPU {
 	c.isp1 = 0
 	c.isp2 = 0
 	return c
+}
+
+type Stats struct {
+	NSteps, InpLen int
+}
+
+func (s *Stats) Reset() {
+	*s = Stats{}
 }
 
 func (c *CPU) resetExec() {
@@ -396,7 +403,7 @@ func (c *CPU) ExecString() string {
 }
 
 func (c *CPU) shouldStep() error {
-	if c.NSteps >= uint32(float64(c.inpLen)*c.maxStepsPerInp) {
+	if c.NSteps >= int(float64(c.InpLen)*c.maxStepsPerInp) {
 		return ErrStepsExceeded
 	}
 
@@ -409,14 +416,14 @@ func (c *CPU) shouldStep() error {
 // Step runs one step of the CPU. Returns true,nil if halt is executed. err has the error (if
 // any) returned by the last op
 func (c *CPU) Step() (execDone bool, err error) {
-	// if len(c.Exec) == 0{
-	// 	c.resetExec()
-	// } else if c.halt {
-	// 	return true, nil
-	// }
-	if len(c.Exec) == 0 || c.halt {
+	if len(c.Exec) == 0 {
+		c.resetExec()
+	} else if c.halt {
 		return true, nil
 	}
+	// if len(c.Exec) == 0 || c.halt {
+	// 	return true, nil
+	// }
 	op := c.PeekExec()
 	err = op.fn(c)
 	c.Exec.Drop()
@@ -495,10 +502,10 @@ var Ops = rawOpMap{
 	// 	cpu.Int.Push(cpu.OfType(stack).Len())
 	// 	return nil
 	// },
-	// "rot": StackFn((*Stack).Rot).ToOpFn(),
-	// "rot3":  StackFn((*Stack).Rot3).ToOpFn(),
+	"rot":  StackFn((*Stack).Rot).ToOpFn(),
+	"rot3": StackFn((*Stack).Rot3).ToOpFn(),
 	// "dup":   StackFn((*Stack).Dup).ToOpFn(),
-	// "swap":  StackFn((*Stack).Swap).ToOpFn(),
+	"swap": StackFn((*Stack).Swap).ToOpFn(),
 	// "over":  StackFn((*Stack).Over).ToOpFn(),
 	// "nip":   StackFn((*Stack).Over).ToOpFn(),
 	// "tuck":  StackFn((*Stack).Over).ToOpFn(),
@@ -580,9 +587,9 @@ var Ops = rawOpMap{
 	// },
 
 	// "exec":  StackExec.ToOpFn(),
-	// "bool":  StackBool.ToOpFn(),
+	"bool": StackBool.ToOpFn(),
 	// "stack": StackBool.ToOpFn(),
-	// "int":   StackInt.ToOpFn(),
+	"int": StackInt.ToOpFn(),
 	//
 	// "lt": func(cpu *CPU) error {
 	// 	// int: ( a b -- )
@@ -596,45 +603,48 @@ var Ops = rawOpMap{
 	// 	return nil
 	// },
 	//
-	// "gt": func(cpu *CPU) error {
-	// 	// int: ( a b -- )
-	// 	// bool: ( -- a > b )
-	// 	if cpu.Int.Len() < 2 {
-	// 		return CPUError("Int stack len wasn't 2")
-	// 	}
-	// 	b, _ := cpu.Int.Pop()
-	// 	a, _ := cpu.Int.Pop()
-	// 	cpu.Bool.Push(a.(int) > b.(int))
-	// 	return nil
-	// },
+	"gt": func(cpu *CPU) error {
+		// int: ( a b -- )
+		// bool: ( -- a > b )
+		b, err := cpu.Int.Peek()
+		if err != nil {
+			return err
+		}
+		a, err := cpu.Int.Peek()
+		if err != nil {
+			return err
+		}
+		cpu.Bool.Push(a.(int) > b.(int))
+		return nil
+	},
 
 	// bool: (a b -- a && b)
-	// "and": func(cpu *CPU) error {
-	// 	b, err := cpu.Bool.Pop()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	a, err := cpu.Bool.Pop()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	cpu.Bool.Push(a.(bool) && b.(bool))
-	// 	return nil
-	// },
-	//
-	// // bool: (a b -- a || b)
-	// "or": func(cpu *CPU) error {
-	// 	b, err := cpu.Bool.Pop()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	a, err := cpu.Bool.Pop()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	cpu.Bool.Push(a.(bool) || b.(bool))
-	// 	return nil
-	// },
+	"and": func(cpu *CPU) error {
+		b, err := cpu.Bool.Pop()
+		if err != nil {
+			return err
+		}
+		a, err := cpu.Bool.Pop()
+		if err != nil {
+			return err
+		}
+		cpu.Bool.Push(a.(bool) && b.(bool))
+		return nil
+	},
+
+	// bool: (a b -- a || b)
+	"or": func(cpu *CPU) error {
+		b, err := cpu.Bool.Pop()
+		if err != nil {
+			return err
+		}
+		a, err := cpu.Bool.Pop()
+		if err != nil {
+			return err
+		}
+		cpu.Bool.Push(a.(bool) || b.(bool))
+		return nil
+	},
 
 	"not": func(cpu *CPU) error {
 		b, err := cpu.Bool.Pop()
@@ -674,7 +684,7 @@ var Ops = rawOpMap{
 		return nil
 	},
 
-	"y": y,
+	// "y": y,
 
 	//
 	// "repeat": func(cpu *CPU) error {
@@ -717,22 +727,22 @@ var Ops = rawOpMap{
 		return nil
 	},
 
-	// "halt_if_sorted": func(cpu *CPU) error {
-	// 	if len(cpu.Int) == 0 {
-	// 		return nil
-	// 	}
-	// 	prevInt := cpu.Int[0].(int)
-	// 	for _, iint := range cpu.Int {
-	// 		if i := iint.(int); i < prevInt {
-	// 			return nil
-	// 		} else {
-	// 			prevInt = i
-	// 		}
-	// 	}
-	//
-	// 	cpu.halt = true
-	// 	return nil
-	// },
+	"halt_if_sorted": func(cpu *CPU) error {
+		if len(cpu.Int) == 0 {
+			return nil
+		}
+		prevInt := cpu.Int[0].(int)
+		for _, iint := range cpu.Int {
+			if i := iint.(int); i < prevInt {
+				return nil
+			} else {
+				prevInt = i
+			}
+		}
+
+		cpu.halt = true
+		return nil
+	},
 
 	"nop": func(cpu *CPU) error {
 		return nil

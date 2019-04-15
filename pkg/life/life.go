@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -157,11 +156,15 @@ func (c Critter) cross(other Critter, randGen *rand.Rand, tries int, cfg *config
 
 	aLen := len(a.Genome)
 	bLen := len(a.Genome)
-
+	var bMinPt, bMaxPt int
 	aMinPt, aMaxPt := a.crossPoints(randGen)
-	bMinPt, bMaxPt := b.crossPoints(randGen)
-	maxExecSz := cfg.MaxExecStackSize
-	for tries := 0; tooLong(aMinPt, aMaxPt, aLen, bMinPt, bMaxPt, bLen, maxExecSz) && tries < 6; tries++ {
+	if cfg.CritterSize == 0 {
+		bMinPt, bMaxPt = b.crossPoints(randGen)
+	} else {
+		bMinPt, bMaxPt = aMinPt, aMaxPt
+	}
+	critSz := cfg.MaxCritterSize()
+	for tries := 0; tooLong(aMinPt, aMaxPt, aLen, bMinPt, bMaxPt, bLen, critSz) && tries < 6; tries++ {
 		aMinPt, aMaxPt = a.crossPoints(randGen)
 		bMinPt, bMaxPt = b.crossPoints(randGen)
 	}
@@ -177,8 +180,8 @@ func (c Critter) cross(other Critter, randGen *rand.Rand, tries int, cfg *config
 	offs2Genome := make(Genome, 0, len(offs2Piece1)+len(offs2Piece2)+len(offs2Piece3))
 	offs2Genome = append(append(append(offs2Genome, bPieces[0]...), aPieces[1]...), bPieces[2]...)
 
-	return NewCritter(cutDown(offs1Genome, maxExecSz), cfg),
-		NewCritter(cutDown(offs2Genome, maxExecSz), cfg)
+	return NewCritter(cutDown(offs1Genome, critSz), cfg),
+		NewCritter(cutDown(offs2Genome, critSz), cfg)
 }
 
 func cutDown(g Genome, maxLen int) Genome {
@@ -208,9 +211,15 @@ func CritterGenerator(cfg *config.Options, rng *rand.Rand) CritterGen {
 	opGen := OpGenerator(rng)
 	return func() Critter {
 		nOps := 0
-		for nOps < 2 {
-			nOps = rng.Intn(cfg.MaxExecStackSize-1) + 1
+
+		if critSz := cfg.CritterSize; critSz == 0 {
+			for nOps < 2 {
+				nOps = rng.Intn(cfg.MaxExecStackSize-1) + 1
+			}
+		} else {
+			nOps = critSz
 		}
+
 		ops := make([]vm.Op, nOps)
 		for i := range ops {
 			ops[i] = opGen()
@@ -248,20 +257,16 @@ func calcErrWorker(p Population, errorFn ErrorFunction, wg *sync.WaitGroup) {
 }
 
 func (p Population) CalcErrors(errorFn ErrorFunction) Population {
-	batchSize := len(p) / runtime.NumCPU()
+	pcopy := p
+	batchSize := len(pcopy) / runtime.GOMAXPROCS(0)
 	var wg sync.WaitGroup
-	for batchSize < len(p) {
+	for batchSize < len(pcopy) {
 		var batch Population
-		p, batch = p[batchSize:], p[0:batchSize:batchSize]
+		pcopy, batch = pcopy[batchSize:], pcopy[0:batchSize:batchSize]
 		wg.Add(1)
 		go calcErrWorker(batch, errorFn, &wg)
 	}
 	wg.Wait()
-	return p
-}
-
-func (p Population) Sort() Population {
-	sort.Sort(p)
 	return p
 }
 
@@ -392,23 +397,25 @@ func (p Population) Cross(rng *rand.Rand, cfg *config.Options) Population {
 }
 
 type Stats struct {
-	AvgErr, AvgNSteps float64
-	LowErr            Population
+	AvgErr, AvgStepsPerInp float64
+	LowErr                 Population
 }
 
 func (p *Population) Stats(errThreshold float64) Stats {
 	popSize := float64(len(*p))
 	errSum := 0.0
-	nStepSum := 0.0
+	nStepsPerInpSum := 0.0
 	lowErr := Population{}
 	for _, cr := range *p {
 		errSum += cr.Error
-		nStepSum += float64(cr.NSteps)
+		if cr.NSteps != 0 {
+			nStepsPerInpSum += float64(cr.NSteps) / float64(cr.InpLen)
+		}
 		if cr.Error < errThreshold {
 			lowErr = append(lowErr, cr)
 		}
 	}
-	return Stats{errSum / popSize, nStepSum / popSize, lowErr}
+	return Stats{errSum / popSize, nStepsPerInpSum / popSize, lowErr}
 }
 
 func timer() func() time.Duration {
@@ -438,8 +445,9 @@ func (p Population) DoYourThing(cfg *config.Options, errorFn ErrorFunction, rng 
 				want := make([]int, len(origInp))
 				copy(want, origInp)
 				sort.Ints(want)
-				log.Printf("gen %4d - avgErr %1.3f - err<%1.2f = %d - avgNSteps/inp %2.1f - err calc %s / crit - cross/mut time %s\n genBest %s err %.3f.\norig: %v\ngot:  %v\nwant: %v\n%s\n",
-					generation, st.AvgErr, cfg.ErrThreshold, len(st.LowErr), st.AvgNSteps/float64(len(origInp)), errTimePer, crossMutTime, genBest.ID, genBest.Error,
+				nLowErr := len(st.LowErr)
+				log.Printf("gen %4d - avgErr %1.3f - err<%1.2f = %.2f%% (%2d)\navgNSteps/inp %2.1f - err calc %s / crit - cross/mut time %s\n\norig: %v\ngot:  %v\nwant: %v\n%s\n",
+					generation, st.AvgErr, cfg.ErrThreshold, (float64(nLowErr)/float64(len(p)))*100, nLowErr, st.AvgStepsPerInp, errTimePer, crossMutTime,
 					origInp, genBest.Int, want, genBest.String())
 			}
 		}
@@ -520,8 +528,8 @@ func isSame(a, b []int) bool {
 
 func SortErrorGen(seed int64, cfg *config.Options) ErrorFunction {
 	fatalErrs := cfg.FatalErrors
-	minLen := cfg.MinTrainingArrayLen
-	sizeRange := 1 + (cfg.MaxTrainingArrayLen - minLen)
+	minLen := cfg.MinTrainArrLen
+	sizeRange := 1 + (cfg.MaxTrainArrLen - minLen)
 	return func(c Critter, input ...int) float64 {
 		rng := rand.New(rand.NewSource(maybeUnixNano(seed)))
 		inpLen := rng.Intn(sizeRange) + minLen
@@ -661,11 +669,22 @@ func maxDist(len int) float64 {
 // two positions left for them to fill). This "maximum error" is used to normalize the sum of errors of each element
 func positionalError(want, got []int) float64 {
 	lenWant := len(want)
-	if lenWant != len(got) {
-		panic("this shit only works if want and got are the same length, now they're " + strconv.Itoa(lenWant) + " and " + strconv.Itoa(len(got)))
+	lenGot := len(got)
+	if lenWant != lenGot {
+		return 1
+	}
+	errSum := 0.0
+	maxIdx := lenWant
+	lenForNormaliz := maxIdx
+	if lenWant > lenGot {
+		maxIdx = lenGot
+		errSum += maxDist(lenWant-lenGot)
+	} else if lenWant < lenGot {
+		lenForNormaliz = lenGot
+		errSum += maxDist(lenGot-lenWant)
 	}
 
-	errSum := 0.0
+
 
 	// max errors
 	// length 2: 1 2  <- max err 1*2 = 2, because if one element is in the wrong place, both are.
@@ -677,10 +696,10 @@ func positionalError(want, got []int) float64 {
 	// length 7: 1 2 3 4 5 6 7 <- 6*2 + 12 = 24
 	// length 8: 1 2 3 4 5 6 7 8 <- 7*2 + 18 = 32
 
-	for wantIdx := 0; wantIdx < lenWant; wantIdx++ {
+	for wantIdx := 0; wantIdx < maxIdx; wantIdx++ {
 		errSum += math.Abs(float64(closestIdx(want[wantIdx], wantIdx, got) - wantIdx))
 	}
-	return errSum / maxDist(lenWant)
+	return errSum / maxDist(lenForNormaliz)
 
 	// for wantIdx, wanted := range want {
 	// 	errSum += math.Abs(float64(closestIdx(wanted, wantIdx, got) - wantIdx))
