@@ -19,30 +19,30 @@ import (
 
 func main() {
 	conf := &config.Options{
-		MutationRatio:        0.05,
-		CrossoverMutP:        0.001,
-		InitialMutSigmaRatio: 0.01,
-		PointMutP:            0.01,
-		TransposeMutP:        0.01,
-		TournamentP:          0.65,
-		TournamentRatio:      0.0,
-		ErrThreshold:         0.5,
-		MinEuclDist:          0.7,
-		MaxGenerations:       10000,
-		PopSize:              300,
-		Verbose:              false,
-		MinTrainArrLen:       5,
-		MaxTrainArrLen:       15,
-		GlobalMutation:       true,
+		MutationRatio:   0.015,
+		CrossoverMutP:   0.0005,
+		MutSigmaRatio:   0.5,
+		PointMutP:       0.005,
+		TransposeMutP:   0.008,
+		TournamentP:     0.65,
+		TournamentRatio: 0.0,
+		ErrThreshold:    0.5,
+		MinEuclDist:     0.7,
+		MaxGenerations:  10000,
+		PopSize:         100,
+		Verbose:         false,
+		MinTrainArrLen:  5,
+		MaxTrainArrLen:  15,
+		GlobalMutation:  true,
 		// CritterSize: 17,
 		CPU: config.CPU{
-			MaxStepsPerInput: 10,
-			MaxExecStackSize: 30,
+			MaxStepsPerInput: 15,
+			MaxExecStackSize: 35,
 			FatalErrors:      false,
 		},
 
 		Stats: config.Stats{
-			AvgGenerations: 20,
+			AvgGenerations: 10,
 		},
 	}
 	flagon.Struct(conf)
@@ -84,6 +84,7 @@ func main() {
 
 	var (
 		bestSort []interface{}
+		best *life.Critter
 	)
 
 	for i := 0; i < conf.MaxGenerations; i++ {
@@ -97,6 +98,7 @@ func main() {
 					}
 					bestToSortErr = toSortErr
 					bestSort = candidate.Int
+					best = candidate
 				}
 				if toSortErr == 0 {
 					goto otog
@@ -106,5 +108,11 @@ func main() {
 		}
 	}
 otog:
+
+	err := 0.0
+	if best != nil {
+		err = errorFn(best, nums...)
+	}
+	log.Printf("Solution with error %.2f after %d generations: %s\n", err, p.Generation, best)
 	fmt.Printf("%v", bestSort)
 }

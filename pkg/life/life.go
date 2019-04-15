@@ -103,11 +103,13 @@ func (c Critter) Mutate(rng *rand.Rand, cfg *config.Options) *Critter {
 	newGen := make([]vm.Op, genomeLen)
 	copy(newGen, c.Genome)
 	for i := range newGen {
-		if rng.Float64() < cfg.PointMutP {
+		pointP := cfg.NormalP(cfg.PointMutP, rng)
+		if rng.Float64() < pointP {
 			newGen[i] = opGen()
 		}
 
-		if rng.Float64() < cfg.TransposeMutP {
+		traspP := cfg.NormalP(cfg.TransposeMutP, rng)
+		if rng.Float64() < traspP {
 			otherPos := i
 			for otherPos == i {
 				otherPos = rng.Intn(genomeLen)
@@ -259,6 +261,7 @@ func NewPopulation(cfg *config.Options, rng *rand.Rand) Population {
 			AvgStepsPerInp:         ewma.NewMovingAverage(nGen),
 			BetterThanParentsRatio: ewma.NewMovingAverage(nGen),
 			StepTime:               ewma.NewMovingAverage(nGen),
+			AvgNLowErr:             ewma.NewMovingAverage(nGen),
 		},
 		cfg.PopSize,
 	}
@@ -282,6 +285,7 @@ func (p Population) calcStats(errThreshold float64) {
 	p.Stats.AvgErr.Add(errSum / popSize)
 	p.Stats.AvgStepsPerInp.Add(nStepsPerInpSum / popSize)
 	p.Stats.LowErr = lowErr
+	p.Stats.AvgNLowErr.Add(float64(lowErr.Len()))
 }
 
 func (p Population) Step(cfg *config.Options, errorFn ErrorFunction, rng *rand.Rand) {
@@ -303,12 +307,21 @@ func (p Population) Step(cfg *config.Options, errorFn ErrorFunction, rng *rand.R
 		want := make([]int, len(origInp))
 		copy(want, origInp)
 		sort.Ints(want)
-		nLowErr := len(st.LowErr)
-		log.Printf("gen %4d - avgErr %1.3f - err<%1.2f = %.2f%% (%2d) - offspringsBetter %2.2f%% \navgNSteps/inp %2.1f - step time %s / critter\n\norig: %v\ngot:  %v\nwant: %v\n%s\n",
-			p.Generation, st.AvgErr.Value(), cfg.ErrThreshold, (float64(nLowErr)/float64(p.Size))*100, nLowErr, st.BetterThanParentsRatio.Value()*100 , st.AvgStepsPerInp.Value(), time.Duration(st.StepTime.Value()),
+		avgNLowErr := st.AvgNLowErr.Value()
+		log.Printf("gen %4d - avgErr %1.3f - err<%1.2f = %.2f%% (%2d) - offspringsBetter %2.2f%% \navgNSteps/inp %2.1f - step time %s / critter - mutSigma %2.5f\n\norig: %v\ngot:  %v\nwant: %v\n%s\n",
+			p.Generation, st.AvgErr.Value(), cfg.ErrThreshold, (avgNLowErr/float64(p.Size))*100, int(avgNLowErr), st.BetterThanParentsRatio.Value()*100, st.AvgStepsPerInp.Value(), time.Duration(st.StepTime.Value()), cfg.MutSigmaRatio,
 			origInp, genBest.Int, want, genBest.String())
 
 	}
+
+	const step = 0.01
+
+	if p.BetterThanParentsRatio.Value() > 0.2 {
+		cfg.MutSigmaRatio = math.Min(cfg.MutSigmaRatio*1+step, 1000)
+	} else {
+		cfg.MutSigmaRatio = math.Max(cfg.MutSigmaRatio*1-(step*2), 0.001)
+	}
+
 	p.StepTime.Add(float64(stopStepTimer(p.Size)))
 }
 
@@ -319,7 +332,8 @@ func NewCritters(size int) Critters {
 }
 
 func (cs Critters) BetterThan(others Critters) (nBetter int) {
-	outer: for _, ourCritter := range cs {
+outer:
+	for _, ourCritter := range cs {
 		for _, otherCritter := range others {
 			if ourCritter.Error < otherCritter.Error {
 				nBetter++
@@ -457,7 +471,7 @@ func isIn(ints []int, i int) bool {
 
 // Mutate some of the critters. Modifies contents of cs
 func (cs Critters) Mutate(rng *rand.Rand, cfg *config.Options) Critters {
-	nToMutate := cfg.NToMutate()
+	nToMutate := cfg.NToMutate(rng)
 	picked := make([]int, 0, nToMutate)
 
 	for i := 0; i < nToMutate; i++ {
@@ -499,6 +513,7 @@ type Stats struct {
 	AvgStepsPerInp         ewma.MovingAverage
 	BetterThanParentsRatio ewma.MovingAverage
 	StepTime               ewma.MovingAverage
+	AvgNLowErr             ewma.MovingAverage
 	LowErr                 Critters
 	Generation             uint32
 }
@@ -579,9 +594,9 @@ func SortErrorGen(seed int64, cfg *config.Options) ErrorFunction {
 
 		outp := fucking.IntSlice(c.Int)
 
-		if isSame(outp, inp) {
-			return MaxError
-		}
+		// if isSame(outp, inp) {
+		// 	return MaxError
+		// }
 
 		if isSame(outp, want) {
 			return 0

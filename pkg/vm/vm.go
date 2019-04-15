@@ -418,14 +418,14 @@ func (c *CPU) shouldStep() error {
 // Step runs one step of the CPU. Returns true,nil if halt is executed. err has the error (if
 // any) returned by the last op
 func (c *CPU) Step() (execDone bool, err error) {
-	if len(c.Exec) == 0 {
-		c.resetExec()
-	} else if c.halt {
-		return true, nil
-	}
-	// if len(c.Exec) == 0 || c.halt {
+	// if len(c.Exec) == 0 {
+	// 	c.resetExec()
+	// } else if c.halt {
 	// 	return true, nil
 	// }
+	if len(c.Exec) == 0 || c.halt {
+		return true, nil
+	}
 	op := c.PeekExec()
 	err = op.fn(c)
 	c.Exec.Drop()
@@ -506,7 +506,7 @@ var Ops = rawOpMap{
 	"over":  StackFn((*Stack).Over).ToOpFn(),
 	"nip":   StackFn((*Stack).Over).ToOpFn(),
 	"tuck":  StackFn((*Stack).Over).ToOpFn(),
-	// "reset": StackFn((*Stack).Reset).ToOpFn(),
+	"reset": StackFn((*Stack).Reset).ToOpFn(),
 	"drop":  StackFn((*Stack).Drop).ToOpFn(),
 	// "yank": func(cpu *CPU) error {
 	// 	stack := cpu.PopStack()
@@ -698,7 +698,7 @@ var Ops = rawOpMap{
 		return nil
 	},
 
-	// "y": y,
+	"y": y,
 
 	//
 	// "repeat": func(cpu *CPU) error {

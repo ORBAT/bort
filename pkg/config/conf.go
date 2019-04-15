@@ -1,7 +1,7 @@
 package config
 
 import (
-	"math"
+	"math/rand"
 )
 
 type CPU struct {
@@ -32,7 +32,7 @@ type Options struct {
 	// Percentage of a population that might be mutated after every generation
 	MutationRatio float64 `usage:"Percentage of a population that might be mutated after every generation"`
 
-	InitialMutSigmaRatio float64 `usage:"Mutation probabilities' standard deviation is initially set at probability*InitialMutSigmaRatio, so if InitialMutSigmaRatio=0.1, each probability's σ will be 10%, meaning that ~68% of the time the probability's value will be within 10% of the initial value"`
+	MutSigmaRatio float64 `usage:"Mutation probabilities' standard deviation is initially set at probability*MutSigmaRatio, so if MutSigmaRatio=0.1, 	each probability's σ will be 10%, meaning that ~68% of the time the probability's value will be within 10% of the initial value"`
 
 	// ErrThreshold is the error under which the critter will be used to try and solve the input problem
 	ErrThreshold float64 `usage:"the error under which the critter will be used to try and solve the input problem"`
@@ -59,10 +59,14 @@ type Options struct {
 	Stats
 }
 
+func (o *Options) NormalP(mutP float64, rng *rand.Rand) float64 {
+	return rng.NormFloat64()*(o.MutSigmaRatio*mutP) + mutP
+}
 
 // NToMutate returns the number of individuals to mutate in p
-func (o *Options) NToMutate() int {
-	return int(math.Floor(o.MutationRatio * float64(o.PopSize)))
+func (o *Options) NToMutate(rng *rand.Rand) int {
+	return max(min(int(o.NormalP(o.MutationRatio, rng) * float64(o.PopSize)), o.PopSize), 1)
+	// return int(math.Floor(o.MutationRatio * float64(o.PopSize)))
 }
 
 func (o *Options) MaxCritterSize() int {
@@ -81,4 +85,18 @@ func (o *Options) SetDefaults() {
 	if o.MaxExecStackSize == 0 {
 		o.MaxExecStackSize = o.CritterSize
 	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
