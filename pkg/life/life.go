@@ -319,10 +319,9 @@ func (p *Population) Step(cfg *config.Options, errorFn ErrorFunction, rng *rand.
 		copy(want, origInp)
 		sort.Ints(want)
 		avgNLowErr := st.AvgNLowErr.Value()
-		log.Printf("gen %4d - avgErr %1.3f (best %1.3f) - err<%1.2f = %.2f%% (%2d) - offspringsBetter %2.2f%% \navgNSteps/inp %2.1f - step time %s / critter - mutSigma %2.5f\n\norig: %v\ngot:  %v\nwant: %v\n%s\n",
+		log.Printf("gen %4d - avgErr %1.3f (avg best %1.3f) - err<%1.2f = %.2f%% (%2d) - offspringsBetter %2.2f%% \navgNSteps/inp %2.1f - step time %s / critter - mutSigma %2.5f\n\norig: %v\ngot:  %v\nwant: %v\n%s\n",
 			p.Generation, st.AvgErr.Value(), st.BestError.Value(), cfg.ErrThreshold, (avgNLowErr/float64(p.Size))*100, int(avgNLowErr), st.BetterThanParentsRatio.Value()*100, st.AvgStepsPerInp.Value(), time.Duration(st.StepTime.Value()), cfg.MutSigmaRatio,
 			origInp, genBest.Int, want, genBest.String())
-
 	}
 
 	const step = 0.05
