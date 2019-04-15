@@ -586,7 +586,7 @@ var Ops = rawOpMap{
 	// 	return nil
 	// },
 
-	// "exec":  StackExec.ToOpFn(),
+	"exec":  StackExec.ToOpFn(),
 	"bool": StackBool.ToOpFn(),
 	// "stack": StackBool.ToOpFn(),
 	"int": StackInt.ToOpFn(),
@@ -604,7 +604,7 @@ var Ops = rawOpMap{
 	// },
 	//
 	"gt": func(cpu *CPU) error {
-		// int: ( a b -- )
+		// int: ( a b -- a b )
 		// bool: ( -- a > b )
 		b, err := cpu.Int.Peek()
 		if err != nil {

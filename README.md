@@ -52,3 +52,4 @@ with itself) back to exec, creating a loop (in Forth stack notation, this is `( 
 y a b c d )`)
 - `if`: executes either of the previous two commands depending on if the top of the bool stack is
 true or not
+- stack operations like `rot`, `swap` etc., executable on any stack

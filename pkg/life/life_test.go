@@ -42,7 +42,7 @@ func TestPos(t *testing.T) {
 	// orig: [99 5 6 1 4 -555 1 0]
 	// 	now:  []
 	// 	want: [-555 0 1 1 4 5 6 99]
-	gots := []int{2,3,1,0}
+	gots := []int{1,2,3}
 	want := []int{1,2,3,4}
 	t.Log(positionalError(want, gots))
 }

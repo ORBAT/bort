@@ -669,22 +669,11 @@ func maxDist(len int) float64 {
 // two positions left for them to fill). This "maximum error" is used to normalize the sum of errors of each element
 func positionalError(want, got []int) float64 {
 	lenWant := len(want)
-	lenGot := len(got)
-	if lenWant != lenGot {
+	if lenWant != len(got) {
 		return 1
 	}
+
 	errSum := 0.0
-	maxIdx := lenWant
-	lenForNormaliz := maxIdx
-	if lenWant > lenGot {
-		maxIdx = lenGot
-		errSum += maxDist(lenWant-lenGot)
-	} else if lenWant < lenGot {
-		lenForNormaliz = lenGot
-		errSum += maxDist(lenGot-lenWant)
-	}
-
-
 
 	// max errors
 	// length 2: 1 2  <- max err 1*2 = 2, because if one element is in the wrong place, both are.
@@ -696,10 +685,10 @@ func positionalError(want, got []int) float64 {
 	// length 7: 1 2 3 4 5 6 7 <- 6*2 + 12 = 24
 	// length 8: 1 2 3 4 5 6 7 8 <- 7*2 + 18 = 32
 
-	for wantIdx := 0; wantIdx < maxIdx; wantIdx++ {
+	for wantIdx := 0; wantIdx < lenWant; wantIdx++ {
 		errSum += math.Abs(float64(closestIdx(want[wantIdx], wantIdx, got) - wantIdx))
 	}
-	return errSum / maxDist(lenForNormaliz)
+	return errSum / maxDist(lenWant)
 
 	// for wantIdx, wanted := range want {
 	// 	errSum += math.Abs(float64(closestIdx(wanted, wantIdx, got) - wantIdx))
