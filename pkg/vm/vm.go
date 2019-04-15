@@ -469,11 +469,11 @@ func (pm rawOpMap) ToOps() (ops map[string]Op) {
 	return
 }
 
-// Y combinator(ish) operator
+// Y combinator(ish) operator. Does this to the exec stack:
 //   ( a b y c d y -- a b y c d y c d )
 //
-// y basically copies the Exec stack up until the next y (or the start of the stack if none found),
-// and prepends the copy (along with itself) back to Exec
+// y copies everything between two y operators (or the the y and the bottom of the stack) and
+// appends it to exec
 func y(cpu *CPU) error {
 	// if exec only has y on it we might as well nuke it and call it a day since that'd be an
 	// infinite loop
@@ -485,6 +485,8 @@ func y(cpu *CPU) error {
 	nextY := nExec - 2
 	for ; nextY >= 0; nextY-- {
 		if cpu.Exec[nextY].(Op).Name == "y" {
+			// if we find another y in exec, we want to start copying immediately _after_ it;
+			// basically the ( c d y -- ) bit in the stack diagram in the doc comment
 			nextY += 1
 			break
 		}
@@ -495,12 +497,13 @@ func y(cpu *CPU) error {
 	}
 
 	clone := make(Stack, (nExec)-nextY)
-	// include the topmost y in the clone, since the top of exec gets popped after each step anyhow
+	// include the topmost y in the clone since exec gets popped after each step
 	toCopy := cpu.Exec[nextY : nExec]
 	copy(clone, toCopy)
 	cpu.Exec = append(cpu.Exec, clone...)
-	if cpu.Exec.Len() > cpu.maxExecSz {
-		cpu.Exec = cpu.Exec[:cpu.maxExecSz]
+	if exl, maxsz := cpu.Exec.Len(), cpu.maxExecSz; exl > maxsz {
+		// preserve the top of the stack when truncating
+		cpu.Exec = cpu.Exec[exl-maxsz:]
 	}
 	return nil
 }
