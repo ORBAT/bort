@@ -28,6 +28,8 @@ type Options struct {
 	// Percentage of a population that might be mutated after every generation
 	MutationRatio float64 `usage:"Percentage of a population that might be mutated after every generation"`
 
+	InitialMutSigmaRatio float64 `usage:"Mutation probabilities' standard deviation is initially set at probability*InitialMutSigmaRatio, so if InitialMutSigmaRatio=0.1, each probability's σ will be 10%, meaning that ~68% of the time the probability's value will be within 10% of the initial value"`
+
 	// ErrThreshold is the error under which the critter will be used to try and solve the input problem
 	ErrThreshold float64 `usage:"the error under which the critter will be used to try and solve the input problem"`
 

@@ -18,6 +18,7 @@ func main() {
 	conf := &config.Options{
 		MutationRatio:   0.05,
 		CrossoverMutP:   0.001,
+		InitialMutSigmaRatio: 0.01,
 		PointMutP:       0.01,
 		TransposeMutP:   0.01,
 		TournamentP:     0.65,
@@ -65,7 +66,7 @@ func main() {
 
 	conf.SetDefaults()
 
-	p := life.NewPopulation(conf, life.NewRNG(0))
+	p := life.RandPopulation(conf, life.NewRNG(0))
 	errorFn := life.SortErrorGen(0, conf)
 	_, _, sortaSorted := p.DoYourThing(conf, errorFn, life.NewRNG(0), nums)
 	fmt.Printf("%v", sortaSorted)

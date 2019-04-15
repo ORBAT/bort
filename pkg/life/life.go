@@ -232,23 +232,27 @@ func NewCritter(ops Genome, cfg *config.Options) Critter {
 	return Critter{ops, vm.NewCPU(ops, cfg.CPU), MaxError, fmt.Sprintf("%p", &ops)}
 }
 
-type Population []Critter
+type Critters []Critter
 
-func (p Population) Len() int {
-	return len(p)
+func NewCritters(size int) Critters {
+	return make(Critters, size)
 }
 
-func (p Population) Less(i, j int) bool {
-	return p[i].Error < p[j].Error
+func (cs Critters) Len() int {
+	return len(cs)
 }
 
-func (p Population) Swap(i, j int) {
-	p[i], p[j] = p[j], p[i]
+func (cs Critters) Less(i, j int) bool {
+	return cs[i].Error < cs[j].Error
+}
+
+func (cs Critters) Swap(i, j int) {
+	cs[i], cs[j] = cs[j], cs[i]
 }
 
 type ErrorFunction func(c Critter, input ...int) float64
 
-func calcErrWorker(p Population, errorFn ErrorFunction, wg *sync.WaitGroup) {
+func calcErrWorker(p Critters, errorFn ErrorFunction, wg *sync.WaitGroup) {
 	for i, critter := range p {
 		critter.Error = errorFn(critter)
 		p[i] = critter
@@ -256,40 +260,40 @@ func calcErrWorker(p Population, errorFn ErrorFunction, wg *sync.WaitGroup) {
 	wg.Done()
 }
 
-func (p Population) CalcErrors(errorFn ErrorFunction) Population {
-	pcopy := p
+func (cs Critters) CalcErrors(errorFn ErrorFunction) Critters {
+	pcopy := cs
 	batchSize := len(pcopy) / runtime.GOMAXPROCS(0)
 	var wg sync.WaitGroup
 	for batchSize < len(pcopy) {
-		var batch Population
+		var batch Critters
 		pcopy, batch = pcopy[batchSize:], pcopy[0:batchSize:batchSize]
 		wg.Add(1)
 		go calcErrWorker(batch, errorFn, &wg)
 	}
 	wg.Wait()
-	return p
+	return cs
 }
 
-func (p Population) Best() Critter {
-	sort.Sort(p)
-	return p[0]
+func (cs Critters) Best() Critter {
+	sort.Sort(cs)
+	return cs[0]
 }
 
 // Delete individual at index idx
-func (p *Population) Delete(idx int) {
-	pp := *p
+func (cs *Critters) Delete(idx int) {
+	pp := *cs
 	copy((pp)[idx:], (pp)[idx+1:])
 	last := len(pp) - 1
 	(pp)[last] = Critter{}
-	*p = (pp)[:last]
+	*cs = (pp)[:last]
 }
 
-func (p Population) SelectFar(rng *rand.Rand, cfg *config.Options, orig Critter) (other Critter, indexInP int) {
+func (cs Critters) SelectFar(rng *rand.Rand, cfg *config.Options, orig Critter) (other Critter, indexInP int) {
 	origv := orig.ToVector()
 	maxDist := 0.0
 	var furthest Critter
 	for tries := 0; tries <= 20; tries++ {
-		other, indexInP = p.Select(rng, cfg)
+		other, indexInP = cs.Select(rng, cfg)
 		dist := other.ToVector().EuclidDist(origv)
 		if dist < cfg.MinEuclDist {
 			furthest = other
@@ -315,18 +319,18 @@ func (p Population) SelectFar(rng *rand.Rand, cfg *config.Options, orig Critter)
 // tournamentP = 1 always returns the best individual of the tournament, and a really small
 // tournamentRatio (so only eg. 1 individual ends up in the tournament) will make selection
 // effectively random
-func (p Population) Select(rng *rand.Rand, cfg *config.Options) (cr Critter, indexInP int) {
-	popSize := len(p)
+func (cs Critters) Select(rng *rand.Rand, cfg *config.Options) (cr Critter, indexInP int) {
+	popSize := len(cs)
 
 	tournSize := int(float64(popSize) * cfg.TournamentRatio)
 
-	tournament := make(Population, tournSize)
+	tournament := NewCritters(tournSize)
 
-	// idx is effectively a slice of randomized indices into p, where each index is in idxs once
+	// idx is effectively a slice of randomized indices into cs, where each index is in idxs once
 	idxs := rng.Perm(popSize)
 	// pick tournSize individuals into the tournament using random indices
 	for i := range tournament {
-		tournament[i] = p[idxs[i]]
+		tournament[i] = cs[idxs[i]]
 	}
 
 	sort.Sort(tournament)
@@ -346,9 +350,9 @@ func (p Population) Select(rng *rand.Rand, cfg *config.Options) (cr Critter, ind
 	return winner, idxs[i]
 }
 
-func (p Population) SelectRandom(rng *rand.Rand) (Critter, int) {
-	idx := rng.Intn(len(p))
-	return p[idx], idx
+func (cs Critters) SelectRandom(rng *rand.Rand) (Critter, int) {
+	idx := rng.Intn(len(cs))
+	return cs[idx], idx
 }
 
 func isIn(ints []int, i int) bool {
@@ -360,53 +364,53 @@ func isIn(ints []int, i int) bool {
 	return false
 }
 
-// Mutate a part of the population, and return a new population with only mutated critters + the best of p
-func (p Population) Mutate(rng *rand.Rand, cfg *config.Options) Population {
+// Mutate a part of the population. Modifies contents of cs
+func (cs Critters) Mutate(rng *rand.Rand, cfg *config.Options) Critters {
 	nToMutate := cfg.NToMutate()
 	picked := make([]int, 0, nToMutate)
 
 	for i := 0; i < nToMutate; i++ {
-		critter, idx := p.SelectRandom(rng)
+		critter, idx := cs.SelectRandom(rng)
 		for isIn(picked, idx) {
-			critter, idx = p.SelectRandom(rng)
+			critter, idx = cs.SelectRandom(rng)
 		}
 		picked = append(picked, idx)
-		p[i] = critter.Mutate(rng, cfg)
+		cs[i] = critter.Mutate(rng, cfg)
 	}
 
-	return p
+	return cs
 }
 
 // Cross two individuals and replace two random individuals with the offspring
-func (p Population) Cross(rng *rand.Rand, cfg *config.Options) Population {
+func (cs Critters) Cross(rng *rand.Rand, cfg *config.Options) Critters {
 	var (
 		critter1, critter2 Critter
 		idx1, idx2         int
 	)
 	for idx1 == idx2 {
-		critter1, idx1 = p.Select(rng, cfg)
-		// critter2, idx2 = p.Select(rng, cfg)
-		critter2, idx2 = p.SelectFar(rng, cfg, critter1)
+		critter1, idx1 = cs.Select(rng, cfg)
+		// critter2, idx2 = cs.Select(rng, cfg)
+		critter2, idx2 = cs.SelectFar(rng, cfg, critter1)
 	}
 	off1, off2 := critter1.Cross(rng, critter2, cfg)
 
-	_, killIdx1 := p.SelectRandom(rng)
-	_, killIdx2 := p.SelectRandom(rng)
-	p[killIdx1], p[killIdx2] = off1.Mutate(rng, cfg), off2.Mutate(rng, cfg)
-	return p
+	_, killIdx1 := cs.SelectRandom(rng)
+	_, killIdx2 := cs.SelectRandom(rng)
+	cs[killIdx1], cs[killIdx2] = off1.Mutate(rng, cfg), off2.Mutate(rng, cfg)
+	return cs
 }
 
 type Stats struct {
 	AvgErr, AvgStepsPerInp float64
-	LowErr                 Population
+	LowErr                 Critters
 }
 
-func (p *Population) Stats(errThreshold float64) Stats {
-	popSize := float64(len(*p))
+func (cs Critters) Stats(errThreshold float64) Stats {
+	popSize := float64(len(cs))
 	errSum := 0.0
 	nStepsPerInpSum := 0.0
-	lowErr := Population{}
-	for _, cr := range *p {
+	lowErr := Critters{}
+	for _, cr := range cs {
 		errSum += cr.Error
 		if cr.NSteps != 0 {
 			nStepsPerInpSum += float64(cr.NSteps) / float64(cr.InpLen)
@@ -418,14 +422,18 @@ func (p *Population) Stats(errThreshold float64) Stats {
 	return Stats{errSum / popSize, nStepsPerInpSum / popSize, lowErr}
 }
 
-func timer() func() time.Duration {
+func timer() func(perN int) time.Duration {
 	start := time.Now()
-	return func() time.Duration {
-		return time.Now().Sub(start)
+	return func(perN int) time.Duration {
+		return time.Duration(int64(time.Now().Sub(start)) / int64(perN))
 	}
 }
 
-func (p Population) DoYourThing(cfg *config.Options, errorFn ErrorFunction, rng *rand.Rand, toSort []int) (pop Population, best Critter, bestSort []interface{}) {
+func (cs Critters) Step(cfg *config.Options, errorFn ErrorFunction, rng *rand.Rand) Critters {
+	panic("wip")
+}
+
+func (cs Critters) DoYourThing(cfg *config.Options, errorFn ErrorFunction, rng *rand.Rand, toSort []int) (pop Critters, best Critter, bestSort []interface{}) {
 	generation := 0
 	bestToSortErr := MaxError
 	wantSorted := make([]int, len(toSort))
@@ -434,20 +442,21 @@ func (p Population) DoYourThing(cfg *config.Options, errorFn ErrorFunction, rng 
 	var crossMutTime time.Duration
 	for ; generation < cfg.MaxGenerations; generation++ {
 		stopErrTimer := timer()
-		p.CalcErrors(errorFn)
-		errTimePer := time.Duration(int64(stopErrTimer()) / int64(len(p)))
-		st := p.Stats(cfg.ErrThreshold)
+		cs.CalcErrors(errorFn)
+		popSize := len(cs)
+		errTimePer := stopErrTimer(popSize)
+		st := cs.Stats(cfg.ErrThreshold)
 
 		if cfg.Verbose {
 			if generation%100 == 0 {
-				genBest := p.Best()
+				genBest := cs.Best()
 				origInp := genBest.OrigInput()
 				want := make([]int, len(origInp))
 				copy(want, origInp)
 				sort.Ints(want)
 				nLowErr := len(st.LowErr)
 				log.Printf("gen %4d - avgErr %1.3f - err<%1.2f = %.2f%% (%2d)\navgNSteps/inp %2.1f - err calc %s / crit - cross/mut time %s\n\norig: %v\ngot:  %v\nwant: %v\n%s\n",
-					generation, st.AvgErr, cfg.ErrThreshold, (float64(nLowErr)/float64(len(p)))*100, nLowErr, st.AvgStepsPerInp, errTimePer, crossMutTime,
+					generation, st.AvgErr, cfg.ErrThreshold, (float64(nLowErr)/float64(popSize))*100, nLowErr, st.AvgStepsPerInp, errTimePer, crossMutTime,
 					origInp, genBest.Int, want, genBest.String())
 			}
 		}
@@ -471,14 +480,14 @@ func (p Population) DoYourThing(cfg *config.Options, errorFn ErrorFunction, rng 
 		}
 
 		stopCrossMutT := timer()
-		p.Cross(rng, cfg)
+		cs.Cross(rng, cfg)
 		if cfg.GlobalMutation {
-			p.Mutate(rng, cfg)
+			cs.Mutate(rng, cfg)
 		}
-		crossMutTime = time.Duration(int64(stopCrossMutT()) / int64(len(p)))
+		crossMutTime = stopCrossMutT(popSize)
 	}
 otog:
-	return p, best, bestSort
+	return cs, best, bestSort
 }
 
 func NewRNG(seed int64) *rand.Rand {
@@ -491,9 +500,9 @@ func OpGenerator(rng *rand.Rand) func() vm.Op {
 	}
 }
 
-func NewPopulation(cfg *config.Options, rng *rand.Rand) Population {
+func RandPopulation(cfg *config.Options, rng *rand.Rand) Critters {
 	cg := CritterGenerator(cfg, rng)
-	p := make(Population, cfg.PopSize)
+	p := NewCritters(cfg.PopSize)
 	for i := range p {
 		p[i] = cg()
 	}
