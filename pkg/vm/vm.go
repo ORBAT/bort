@@ -209,6 +209,9 @@ type Stacks struct {
 
 	// Stack should contain StackTypes
 	Stack Stack
+
+	// Cplx should contain complex128s
+	Cplx Stack
 }
 
 func (s *Stacks) Reset() {
