@@ -74,9 +74,9 @@ func TestNondeter(t *testing.T) {
 		genome = append(genome, vm.Ops[insName])
 	}
 	c := NewCritter(genome, cfg)
-	c.Input([]int{11, 10, 2, 0, 14}).Run(true)
+	c.Input([]int{11, 10, 2, 0, 14}, vm.StackInt).Run(true)
 	out1 := fucking.IntSlice(c.Int)
-	c.Input([]int{11, 10, 2, 0, 14}).Run(true)
+	c.Input([]int{11, 10, 2, 0, 14}, vm.StackInt).Run(true)
 	out2 := fucking.IntSlice(c.Int)
 
 	if !reflect.DeepEqual(out1, out2) {

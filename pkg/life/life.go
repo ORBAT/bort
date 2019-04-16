@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -91,15 +92,14 @@ func (c Critter) String() string {
 }
 
 // Mutate a critter. xoverP gives the probability of crossover mutation, pointMutP for point
-// mutation and transposeMutP for transposition.
+// mutation and transpP for transposition.
 func (c Critter) Mutate(rng *rand.Rand, cfg *config.Options, pointP, transpP, xoverMutP float64) *Critter {
 	if rng.Float64() < xoverMutP {
 		cg := CritterGenerator(cfg, rng)
 		crossed, _ := c.Cross(rng, cg(), cfg)
 		return crossed
 	}
-	// pointP := cfg.NormalP(cfg.PointMutP, rng)
-	// transpP := cfg.NormalP(cfg.TransposeMutP, rng)
+
 	opGen := OpGenerator(rng)
 	genomeLen := len(c.Genome)
 	newGen := make([]vm.Op, genomeLen)
@@ -266,6 +266,7 @@ func NewPopulation(cfg *config.Options, rng *rand.Rand) Population {
 			StepTime:               ewma.NewMovingAverage(nGen),
 			AvgNLowErr:             ewma.NewMovingAverage(nGen),
 			BestError:              ewma.NewMovingAverage(nGen),
+			cfg:                    cfg,
 		},
 		cfg.PopSize,
 	}
@@ -299,8 +300,7 @@ func (p *Population) calcStats(errThreshold float64) {
 	p.Stats.BestError.Add(lowestErr.Error)
 }
 
-
-func (p *Population) Step(cfg *config.Options, errorFn ErrorFunction, rng *rand.Rand) {
+func (p *Population) Step(cfg *config.Options, errorFn ErrorFunction, rng *rand.Rand) *Population {
 	stopStepTimer := timer()
 	offs, parents := p.Cross(rng, cfg)
 	if cfg.GlobalMutation {
@@ -313,14 +313,11 @@ func (p *Population) Step(cfg *config.Options, errorFn ErrorFunction, rng *rand.
 	p.Generation++
 	if cfg.Verbose && p.Generation%300 == 0 {
 		genBest := p.Best()
-		st := p.Stats
 		origInp := genBest.OrigInput()
 		want := make([]int, len(origInp))
-		copy(want, origInp)
+		copy(want, fucking.IntSlice(origInp))
 		sort.Ints(want)
-		avgNLowErr := st.AvgNLowErr.Value()
-		log.Printf("gen %4d - avgErr %1.3f (avg best %1.3f) - err<%1.2f = %.2f%% (%2d) - offspringsBetter %2.2f%% \navgNSteps/inp %2.1f - step time %s / critter - mutSigma %2.5f\n\norig: %v\ngot:  %v\nwant: %v\n%s\n",
-			p.Generation, st.AvgErr.Value(), st.BestError.Value(), cfg.ErrThreshold, (avgNLowErr/float64(p.Size))*100, int(avgNLowErr), st.BetterThanParentsRatio.Value()*100, st.AvgStepsPerInp.Value(), time.Duration(st.StepTime.Value()), cfg.MutSigmaRatio,
+		log.Printf(p.Stats.String()+"\norig: %v\ngot:  %v\nwant: %v\n%s\n",
 			origInp, genBest.Int, want, genBest.String())
 	}
 
@@ -333,6 +330,7 @@ func (p *Population) Step(cfg *config.Options, errorFn ErrorFunction, rng *rand.
 	}
 
 	p.StepTime.Add(float64(stopStepTimer(p.Size)))
+	return p
 }
 
 type Critters []*Critter
@@ -368,6 +366,45 @@ func (cs Critters) Swap(i, j int) {
 
 type ErrorFunction func(c *Critter, input ...int) float64
 
+type PopModifier func(p *Population) *Population
+
+type PopModifierChain []PopModifier
+
+func (pm PopModifierChain) RunOn(p *Population) *Population {
+	for _, fn := range pm {
+		p = fn(p)
+	}
+	return p
+}
+
+func ParsimonyPressure(p *Population) *Population {
+	minSteps, maxSteps := math.MaxInt64, math.MinInt64
+	for _, cr := range p.Critters {
+		if st := cr.NSteps; st < minSteps {
+			minSteps = st
+		} else if st > maxSteps {
+			maxSteps = st
+		}
+	}
+
+	stepRange := float64(maxSteps - minSteps)
+
+	if stepRange == 0 {
+		for _, cr := range p.Critters {
+			cr.Error *= 0.75
+			cr.Error += 0.25
+		}
+		return p
+	}
+
+	for _, cr := range p.Critters {
+		cr.Error *= 0.75
+		cr.Error += (float64(cr.NSteps-minSteps) / stepRange) * 0.25
+	}
+
+	return p
+}
+
 func calcErrWorker(p Critters, errorFn ErrorFunction, wg *sync.WaitGroup, input ...int) {
 	for i, critter := range p {
 		p[i] = critter.CalcError(errorFn, input...)
@@ -382,15 +419,20 @@ func (cs Critters) Clone() Critters {
 }
 
 func (cs Critters) CalcErrors(errorFn ErrorFunction, input ...int) Critters {
-	pcopy := cs
-	batchSize := len(pcopy) / runtime.GOMAXPROCS(0)
+	numCPU := runtime.NumCPU()
+	lencs := len(cs)
+	batchSize := (lencs + numCPU - 1) / numCPU
 	var wg sync.WaitGroup
-	for batchSize < len(pcopy) {
-		var batch Critters
-		pcopy, batch = pcopy[batchSize:], pcopy[0:batchSize:batchSize]
+
+	for i := 0; i < lencs; i += batchSize {
+		last := i + batchSize
+		if last > lencs {
+			last = lencs
+		}
 		wg.Add(1)
-		go calcErrWorker(batch, errorFn, &wg, input...)
+		go calcErrWorker(cs[i:last], errorFn, &wg, input...)
 	}
+
 	wg.Wait()
 	return cs
 }
@@ -539,8 +581,37 @@ type Stats struct {
 	StepTime               ewma.MovingAverage
 	AvgNLowErr             ewma.MovingAverage
 	BestError              ewma.MovingAverage
+	Custom                 map[string]ewma.MovingAverage
 	LowErr                 Critters
 	Generation             uint32
+	cfg                    *config.Options
+}
+
+func (st *Stats) customErrString() string {
+	custErr := make([]string, 0, len(st.Custom))
+	for k, v := range st.Custom {
+		custErr = append(custErr, k+"="+strconv.FormatFloat(v.Value(), 'f', 3, 64))
+	}
+	sort.Strings(custErr)
+	return strings.Join(custErr, " ")
+}
+
+func (st *Stats) String() string {
+	avgNLowErr := st.AvgNLowErr.Value()
+	return fmt.Sprintf("gen %4d - avgErr %1.3f (avg best %1.3f) - err<%1.2f = %.2f pct (%2d) - offspringsBetter %2.2f pct \navgNSteps/inp %2.1f - step time %s / critter - mutSigma %2.5f", st.Generation, st.AvgErr.Value(), st.BestError.Value(), st.cfg.ErrThreshold, (avgNLowErr/float64(st.cfg.PopSize))*100, int(avgNLowErr), st.BetterThanParentsRatio.Value()*100, st.AvgStepsPerInp.Value(), time.Duration(st.StepTime.Value()), st.cfg.MutSigmaRatio)
+}
+
+func (st *Stats) CustomStat(name string, age ...float64) ewma.MovingAverage {
+	if st.Custom == nil {
+		st.Custom = make(map[string]ewma.MovingAverage)
+	}
+	c := st.Custom
+	ma, ok := c[name]
+	if !ok {
+		ma = ewma.NewMovingAverage(age...)
+		c[name] = ma
+	}
+	return ma
 }
 
 func timer() func(perN int) time.Duration {
@@ -599,12 +670,16 @@ func SortErrorGen(seed int64, cfg *config.Options) ErrorFunction {
 	fatalErrs := cfg.FatalErrors
 	minLen := cfg.MinTrainArrLen
 	sizeRange := 1 + (cfg.MaxTrainArrLen - minLen)
+	slGen := genTestSlice
+	if minLen == cfg.MaxTrainArrLen {
+		slGen = bufferedSliceGen(minLen, seed)
+	}
 	return func(c *Critter, input ...int) float64 {
 		rng := rand.New(rand.NewSource(maybeUnixNano(seed)))
 		inpLen := rng.Intn(sizeRange) + minLen
 		var inp, want []int
 		if len(input) == 0 {
-			inp, want = genTestSlice(inpLen, rng)
+			inp, want = slGen(inpLen, rng)
 		} else {
 			inp = input
 			want = make([]int, len(input))
@@ -612,7 +687,7 @@ func SortErrorGen(seed int64, cfg *config.Options) ErrorFunction {
 			sort.Ints(want)
 		}
 
-		_, err := c.Input(inp).Run(fatalErrs)
+		_, err := c.Input(inp, vm.StackInt).Run(fatalErrs)
 		if err != nil {
 			return MaxError
 		}
@@ -634,6 +709,24 @@ func SortErrorGen(seed int64, cfg *config.Options) ErrorFunction {
 	}
 }
 
+// bufferedSliceGen pregenerates slices of inpLen
+func bufferedSliceGen(inpLen int, seed int64) func(_ int, _ *rand.Rand) (inp []int, want []int) {
+	type holder [2][]int
+	slices := make(chan holder, 1024)
+	go func(ch chan<- holder) {
+		rng := rand.New(rand.NewSource(maybeUnixNano(seed)))
+		for {
+			in, want := genTestSlice(inpLen, rng)
+			ch <- [2][]int{in, want}
+		}
+	}(slices)
+
+	return func(_ int, _ *rand.Rand) (inp []int, want []int) {
+		inWant := <-slices
+		return inWant[0], inWant[1]
+	}
+}
+
 func genTestSlice(inpLen int, rng *rand.Rand) (inp []int, want []int) {
 	if inpLen == 0 {
 		panic("wwadas")
@@ -645,7 +738,7 @@ func genTestSlice(inpLen int, rng *rand.Rand) (inp []int, want []int) {
 	want = make([]int, inpLen)
 	copy(want, inp)
 	sort.Ints(want)
-	if positionalError(inp, want) < 0.5 {
+	if positionalError(inp, want) < 0.8 {
 		return genTestSlice(inpLen, rng)
 	}
 	return inp, want

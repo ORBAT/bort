@@ -33,9 +33,11 @@ Note that you may have to run `bort` several times, and it might not be able to 
 ## CPU
 
 `bort`'s CPU has 3 stacks:
-- exec: this is where executable code lives. Code is run by popping instructions off `exec`
-- int: integer stack. This is where the input is written, and where the output is read from
+- `exec`: this is where executable code lives and is read into. Code is run by popping instructions
+          off `exec`
+- `int`: integer stack. This is where the input is written, and where the output is read from
 - bool: boolean stack
+- stack
 
 Code can modify the contents of the exec stack, i.e. the code can be self-modifying
 

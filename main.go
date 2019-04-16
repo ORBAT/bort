@@ -34,7 +34,7 @@ func main() {
 		MinTrainArrLen:  0,
 		MaxTrainArrLen:  0,
 		GlobalMutation:  true,
-		CritterSize:     20,
+		CritterSize:     25,
 		CPU: config.CPU{
 			MaxStepsPerInput: 15,
 			MaxExecStackSize: 35,
@@ -96,7 +96,7 @@ func main() {
 	)
 
 	for i := 0; i < conf.MaxGenerations; i++ {
-		p.Step(conf, errorFn, rng)
+		life.ParsimonyPressure(p.Step(conf, errorFn, rng))
 		if candidates := p.Stats.LowErr; len(candidates) != 0 {
 			for _, candidate := range candidates {
 				toSortErr := errorFn(candidate, nums...)
